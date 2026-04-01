@@ -105,3 +105,60 @@ cd frontend && npm test
 - Defina `WHATSAPP_MODE=web`.
 - Abra Integracoes > Gerar QR Code e escaneie com WhatsApp Business/App.
 
+## SMTP Gmail
+
+Configure no `.env`:
+
+```env
+SMTP_PROVIDER=gmail
+SMTP_USER=seu-email@gmail.com
+SMTP_PASS=sua-app-password-do-gmail
+SMTP_FROM=seu-email@gmail.com
+```
+
+> Use **App Password** do Google (conta com 2FA), nao senha comum.
+
+## Deploy free tier no Google Cloud (Cloud Run)
+
+Foi adicionado workflow em:
+
+`/.github/workflows/deploy-gcp-cloud-run.yml`
+
+Ele faz:
+1. Build da imagem Docker do backend
+2. Push para Artifact Registry
+3. Deploy no Cloud Run
+4. Injeta variaveis de ambiente (incluindo WhatsApp web e SMTP Gmail)
+
+### Secrets do GitHub necessarias
+
+No repositório GitHub, configure:
+
+- `GCP_PROJECT_ID` (ex.: `meu-projeto-123`)
+- `GCP_WIF_PROVIDER` (Workload Identity Provider full name)
+- `GCP_SERVICE_ACCOUNT` (service account para deploy)
+- `MONGODB_URI` (Mongo Atlas free tier)
+- `JWT_SECRET`
+- `ENCRYPTION_KEY`
+- `SMTP_USER`
+- `SMTP_PASS` (App Password do Gmail)
+
+### Variaveis ajustaveis no workflow
+
+No arquivo de workflow:
+
+- `GCP_REGION` (padrao `us-central1`)
+- `SERVICE_NAME` (padrao `med-system-api`)
+- `AR_REPOSITORY` (padrao `cloud-run-source-deploy`)
+- `FRONTEND_ORIGIN`
+
+### Como disparar deploy
+
+Push para branch `main` ou execucao manual em **Actions > Deploy Backend to Cloud Run (Free Tier Friendly)**.
+
+### Observacoes importantes para WhatsApp Web no Cloud Run
+
+- Sessao WhatsApp Web e QR sao **estadoful** e podem ser instaveis em ambiente serverless.
+- Para manter sessao de forma robusta, o ideal e persistir auth em storage externo e usar instancia sempre ativa (pode sair do free tier).
+- Mesmo assim, o modo `web` foi mantido como solicitado e habilitado por variavel (`WHATSAPP_MODE=web`).
+

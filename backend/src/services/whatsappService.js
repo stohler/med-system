@@ -29,7 +29,7 @@ function getWhatsappStatus() {
 
 async function initWhatsApp() {
   if (!env.whatsappEnabled || env.whatsappMode !== "web") return;
-  if (!ClientLib || !LocalAuthLib) return;
+  if (!ClientLib || !LocalAuthLib || !env.whatsappWebEnabled) return;
   if (initializing || client) return;
 
   initializing = true;

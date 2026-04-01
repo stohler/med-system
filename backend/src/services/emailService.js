@@ -6,6 +6,14 @@ let transporter;
 function getTransporter() {
   if (transporter) return transporter;
 
+  if (env.smtpService) {
+    transporter = nodemailer.createTransport({
+      service: env.smtpService,
+      auth: { user: env.smtpUser, pass: env.smtpPass },
+    });
+    return transporter;
+  }
+
   if (env.smtpHost && env.smtpUser && env.smtpPass) {
     transporter = nodemailer.createTransport({
       host: env.smtpHost,
