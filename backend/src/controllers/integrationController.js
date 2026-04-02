@@ -25,9 +25,30 @@ const whatsappStatus = asyncHandler(async (_req, res) => {
 });
 
 const whatsappQr = asyncHandler(async (_req, res) => {
-  await initWhatsApp();
-  const qrCodeDataUrl = await getWhatsappQrCode();
-  res.json({ qrCodeDataUrl });
+  try {
+    await initWhatsApp();
+    const qrCodeDataUrl = await getWhatsappQrCode();
+    const status = getWhatsappStatus();
+
+    if (!qrCodeDataUrl) {
+      let reason = "QR indisponivel no momento. Aguarde alguns segundos e tente novamente.";
+      if (status.mode !== "web") {
+        reason = "WHATSAPP_MODE diferente de web. Ajuste para web para usar QR Code.";
+      } else if (!status.webClientAvailable) {
+        reason =
+          "Cliente WhatsApp Web indisponivel no ambiente. Verifique dependencias Chromium/Puppeteer.";
+      }
+      return res.status(503).json({ qrCodeDataUrl: null, reason, status });
+    }
+
+    return res.json({ qrCodeDataUrl, status });
+  } catch (error) {
+    return res.status(503).json({
+      qrCodeDataUrl: null,
+      reason: error.message || "Falha ao inicializar WhatsApp Web.",
+      status: getWhatsappStatus(),
+    });
+  }
 });
 
 module.exports = {

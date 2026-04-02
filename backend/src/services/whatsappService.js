@@ -17,6 +17,7 @@ let client;
 let lastQrDataUrl = null;
 let ready = false;
 let initializing = false;
+let lastError = "";
 
 function getWhatsappStatus() {
   return {
@@ -24,40 +25,66 @@ function getWhatsappStatus() {
     mode: env.whatsappMode,
     ready,
     hasQr: Boolean(lastQrDataUrl),
+    initializing,
+    webSessionEnabled: env.whatsappWebEnabled,
+    libraryLoaded: Boolean(ClientLib && LocalAuthLib),
+    lastError: lastError || null,
   };
 }
 
 async function initWhatsApp() {
   if (!env.whatsappEnabled || env.whatsappMode !== "web") return;
-  if (!ClientLib || !LocalAuthLib || !env.whatsappWebEnabled) return;
+  if (!ClientLib || !LocalAuthLib || !env.whatsappWebEnabled) {
+    lastError = "WhatsApp Web indisponivel no ambiente atual.";
+    return;
+  }
   if (initializing || client) return;
 
   initializing = true;
   client = new ClientLib({
-    authStrategy: new LocalAuthLib({ clientId: "clinic-system" }),
+    authStrategy: new LocalAuthLib({
+      clientId: "clinic-system",
+      dataPath: env.whatsappSessionPath,
+    }),
     puppeteer: { args: ["--no-sandbox", "--disable-setuid-sandbox"] },
   });
 
   client.on("qr", async (qr) => {
     lastQrDataUrl = await qrcode.toDataURL(qr);
     ready = false;
+    lastError = "";
   });
 
   client.on("ready", () => {
     ready = true;
     lastQrDataUrl = null;
+    lastError = "";
   });
 
-  client.on("auth_failure", () => {
+  client.on("auth_failure", (message) => {
     ready = false;
+    lastError = message || "Falha de autenticacao WhatsApp.";
   });
 
   client.on("disconnected", () => {
     ready = false;
+    lastError = "Sessao WhatsApp desconectada.";
   });
 
-  await client.initialize();
-  initializing = false;
+  client.on("change_state", (state) => {
+    if (state === "CONFLICT" || state === "UNPAIRED") {
+      ready = false;
+    }
+  });
+
+  try {
+    await client.initialize();
+  } catch (error) {
+    lastError = error?.message || "Falha ao iniciar cliente WhatsApp.";
+    client = null;
+  } finally {
+    initializing = false;
+  }
 }
 
 async function getWhatsappQrCode() {

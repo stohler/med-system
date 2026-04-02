@@ -8,6 +8,15 @@ const procedureSchema = z.object({
   description: z.string().optional(),
   defaultDurationMinutes: z.number().int().min(10).max(600).default(30),
   defaultPriceCents: z.number().int().min(0).default(0),
+  locationPrices: z
+    .array(
+      z.object({
+        location: z.string().min(1),
+        priceCents: z.number().int().min(0),
+      })
+    )
+    .optional()
+    .default([]),
   requiresPreparation: z.boolean().default(false),
   active: z.boolean().optional(),
 });
@@ -35,4 +44,33 @@ const updateProcedure = asyncHandler(async (req, res) => {
   res.json({ procedure });
 });
 
-module.exports = { listProcedures, createProcedure, updateProcedure };
+const updateProcedurePriceByLocation = asyncHandler(async (req, res) => {
+  const priceSchema = z.object({
+    priceCents: z.number().int().min(0),
+  });
+  const payload = priceSchema.parse(req.body);
+
+  const procedure = await ProcedureType.findById(req.params.id);
+  if (!procedure) {
+    throw new NotFoundError("Procedimento nao encontrado");
+  }
+
+  const remaining = (procedure.locationPrices || []).filter(
+    (item) => String(item.location) !== String(req.params.locationId)
+  );
+
+  procedure.locationPrices = [
+    ...remaining,
+    { location: req.params.locationId, priceCents: payload.priceCents },
+  ];
+  await procedure.save();
+
+  res.json({ procedure });
+});
+
+module.exports = {
+  listProcedures,
+  createProcedure,
+  updateProcedure,
+  updateProcedurePriceByLocation,
+};

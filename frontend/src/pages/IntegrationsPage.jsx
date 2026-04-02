@@ -31,7 +31,14 @@ export function IntegrationsPage() {
     setError("");
     try {
       const { data } = await api.get("/integrations/whatsapp/qr");
+      if (data.error) {
+        setError(data.message || "Nao foi possivel iniciar sessao WhatsApp Web");
+      }
       setQr(data.qrCodeDataUrl || "");
+      setWhatsapp((prev) => ({
+        ...(prev || {}),
+        ...(data.status || {}),
+      }));
     } catch (err) {
       setError(err?.response?.data?.message || "Falha ao gerar QR Code");
     }

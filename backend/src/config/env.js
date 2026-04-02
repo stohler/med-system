@@ -26,6 +26,7 @@ const env = {
   googleCalendarId: process.env.GOOGLE_CALENDAR_ID || "primary",
   whatsappEnabled: String(process.env.WHATSAPP_ENABLED || "true") === "true",
   whatsappMode: process.env.WHATSAPP_MODE || "web",
+  whatsappWebEnabled: String(process.env.WHATSAPP_WEB_ENABLED || "true") === "true",
   whatsappSessionPath: process.env.WHATSAPP_SESSION_PATH || ".wwebjs_auth",
   whatsappBusinessToken: process.env.WHATSAPP_BUSINESS_TOKEN || "",
   whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
