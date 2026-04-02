@@ -16,6 +16,7 @@ env:
   GAR_REPOSITORY: ${{ secrets.GCP_ARTIFACT_REPO != '' && secrets.GCP_ARTIFACT_REPO || 'med-system' }}
   CLOUD_RUN_SERVICE: ${{ secrets.GCP_FRONTEND_SERVICE_NAME != '' && secrets.GCP_FRONTEND_SERVICE_NAME || 'med-system-web' }}
   IMAGE_NAME: med-system-frontend
+  FRONTEND_PUBLIC_HOST: ${{ secrets.FRONTEND_PUBLIC_HOST != '' && secrets.FRONTEND_PUBLIC_HOST || 'med.stohler.com.br' }}
 
 jobs:
   deploy:
@@ -63,6 +64,7 @@ jobs:
           IMAGE_URI="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${GAR_REPO_CLEAN}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
           docker build \
             --build-arg VITE_API_URL="${{ secrets.FRONTEND_API_URL }}" \
+            --build-arg VITE_ALLOWED_HOSTS="${{ env.FRONTEND_PUBLIC_HOST }},.run.app" \
             -t "${IMAGE_URI}" \
             ./frontend
           docker push "${IMAGE_URI}"
