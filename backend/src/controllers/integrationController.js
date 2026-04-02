@@ -34,9 +34,14 @@ const whatsappQr = asyncHandler(async (_req, res) => {
       let reason = "QR indisponivel no momento. Aguarde alguns segundos e tente novamente.";
       if (status.mode !== "web") {
         reason = "WHATSAPP_MODE diferente de web. Ajuste para web para usar QR Code.";
-      } else if (!status.webClientAvailable) {
+      } else if (!status.libraryLoaded) {
         reason =
           "Cliente WhatsApp Web indisponivel no ambiente. Verifique dependencias Chromium/Puppeteer.";
+      } else if (!status.webSessionEnabled) {
+        reason =
+          "WhatsApp Web foi desabilitado no ambiente (WHATSAPP_WEB_ENABLED=false).";
+      } else if (status.lastError) {
+        reason = status.lastError;
       }
       return res.status(503).json({ qrCodeDataUrl: null, reason, status });
     }

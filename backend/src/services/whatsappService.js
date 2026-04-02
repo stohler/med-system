@@ -18,6 +18,7 @@ let lastQrDataUrl = null;
 let ready = false;
 let initializing = false;
 let lastError = "";
+let forceWebUnavailable = false;
 
 function getWhatsappStatus() {
   return {
@@ -33,6 +34,11 @@ function getWhatsappStatus() {
 }
 
 async function initWhatsApp() {
+  if (forceWebUnavailable) {
+    lastError =
+      "WhatsApp Web desabilitado neste ambiente por limite de memoria/estabilidade.";
+    return;
+  }
   if (!env.whatsappEnabled || env.whatsappMode !== "web") return;
   if (!ClientLib || !LocalAuthLib || !env.whatsappWebEnabled) {
     lastError = "WhatsApp Web indisponivel no ambiente atual.";
@@ -80,7 +86,13 @@ async function initWhatsApp() {
   try {
     await client.initialize();
   } catch (error) {
-    lastError = error?.message || "Falha ao iniciar cliente WhatsApp.";
+    const message = error?.message || "Falha ao iniciar cliente WhatsApp.";
+    lastError = message;
+    if (/memory|ENOMEM|Target closed|browser has disconnected/i.test(message)) {
+      forceWebUnavailable = true;
+      lastError =
+        "Memoria insuficiente para iniciar WhatsApp Web. Aumente memoria do Cloud Run para 1Gi ou use modo business.";
+    }
     client = null;
   } finally {
     initializing = false;

@@ -24,6 +24,10 @@ export function SettingsPage() {
   const [procedures, setProcedures] = useState([]);
   const [locationForm, setLocationForm] = useState(emptyLocation);
   const [procedureForm, setProcedureForm] = useState(emptyProcedure);
+  const [editingLocationId, setEditingLocationId] = useState("");
+  const [editingProcedureId, setEditingProcedureId] = useState("");
+  const [showLocationForm, setShowLocationForm] = useState(false);
+  const [showProcedureForm, setShowProcedureForm] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -45,18 +49,61 @@ export function SettingsPage() {
     }));
   }, [locations, procedureForm]);
 
+  const resetLocationForm = () => {
+    setEditingLocationId("");
+    setLocationForm(emptyLocation);
+    setShowLocationForm(false);
+  };
+
+  const resetProcedureForm = () => {
+    setEditingProcedureId("");
+    setProcedureForm(emptyProcedure);
+    setShowProcedureForm(false);
+  };
+
+  const startEditLocation = (location) => {
+    setEditingLocationId(location._id);
+    setLocationForm({
+      name: location.name || "",
+      addressLine1: location.addressLine1 || "",
+      city: location.city || "",
+      state: location.state || "",
+      zipCode: location.zipCode || "",
+      consultationPriceCents: location.consultationPriceCents || 0,
+    });
+    setShowLocationForm(true);
+  };
+
+  const startEditProcedure = (procedure) => {
+    setEditingProcedureId(procedure._id);
+    setProcedureForm({
+      name: procedure.name || "",
+      description: procedure.description || "",
+      defaultDurationMinutes: procedure.defaultDurationMinutes || 30,
+      defaultPriceCents: procedure.defaultPriceCents || 0,
+      requiresPreparation: Boolean(procedure.requiresPreparation),
+      pricesByLocation: procedure.pricesByLocation || [],
+    });
+    setShowProcedureForm(true);
+  };
+
   const saveLocation = async (event) => {
     event.preventDefault();
     setError("");
     setMessage("");
     try {
-      await api.post("/locations", {
+      const payload = {
         ...locationForm,
         consultationPriceCents: Number(locationForm.consultationPriceCents),
-      });
-      setLocationForm(emptyLocation);
+      };
+      if (editingLocationId) {
+        await api.put(`/locations/${editingLocationId}`, payload);
+      } else {
+        await api.post("/locations", payload);
+      }
+      resetLocationForm();
       await load();
-      setMessage("Endereco salvo com sucesso.");
+      setMessage(editingLocationId ? "Endereco atualizado com sucesso." : "Endereco salvo com sucesso.");
     } catch (err) {
       setError(err?.response?.data?.message || "Nao foi possivel salvar endereco");
     }
@@ -67,14 +114,19 @@ export function SettingsPage() {
     setError("");
     setMessage("");
     try {
-      await api.post("/procedures", {
+      const payload = {
         ...procedureForm,
         defaultDurationMinutes: Number(procedureForm.defaultDurationMinutes),
         defaultPriceCents: Number(procedureForm.defaultPriceCents),
-      });
-      setProcedureForm(emptyProcedure);
+      };
+      if (editingProcedureId) {
+        await api.put(`/procedures/${editingProcedureId}`, payload);
+      } else {
+        await api.post("/procedures", payload);
+      }
+      resetProcedureForm();
       await load();
-      setMessage("Procedimento salvo com sucesso.");
+      setMessage(editingProcedureId ? "Procedimento atualizado com sucesso." : "Procedimento salvo com sucesso.");
     } catch (err) {
       setError(err?.response?.data?.message || "Nao foi possivel salvar procedimento");
     }
@@ -95,142 +147,181 @@ export function SettingsPage() {
     <section className="stack">
       <h2>Configuracoes</h2>
       <p className="muted">
-        Cadastre enderecos e procedimentos padrao. O mesmo procedimento pode ter preco diferente por local.
+        Enderecos e procedimentos padrao. O mesmo procedimento pode ter preco diferente por local.
       </p>
 
       {error ? <p className="error">{error}</p> : null}
       {message ? <p className="success">{message}</p> : null}
 
-      <div className="grid-cards">
-        <form className="card form-grid" onSubmit={saveLocation}>
-          <h3>Novo endereco</h3>
-          <label>
-            Nome
-            <input value={locationForm.name} onChange={(e) => setLocationForm((p) => ({ ...p, name: e.target.value }))} required />
-          </label>
-          <label>
-            Endereco
-            <input value={locationForm.addressLine1} onChange={(e) => setLocationForm((p) => ({ ...p, addressLine1: e.target.value }))} required />
-          </label>
-          <label>
-            Cidade
-            <input value={locationForm.city} onChange={(e) => setLocationForm((p) => ({ ...p, city: e.target.value }))} required />
-          </label>
-          <label>
-            Estado
-            <input value={locationForm.state} onChange={(e) => setLocationForm((p) => ({ ...p, state: e.target.value }))} required />
-          </label>
-          <label>
-            CEP
-            <input value={locationForm.zipCode} onChange={(e) => setLocationForm((p) => ({ ...p, zipCode: e.target.value }))} required />
-          </label>
-          <label>
-            Valor base da consulta (centavos)
-            <input
-              type="number"
-              min="0"
-              value={locationForm.consultationPriceCents}
-              onChange={(e) =>
-                setLocationForm((p) => ({ ...p, consultationPriceCents: e.target.value }))
-              }
-              required
-            />
-          </label>
-          <button type="submit">Salvar endereco</button>
-        </form>
-
-        <form className="card form-grid" onSubmit={saveProcedure}>
-          <h3>Novo procedimento</h3>
-          <label>
-            Nome
-            <input value={procedureForm.name} onChange={(e) => setProcedureForm((p) => ({ ...p, name: e.target.value }))} required />
-          </label>
-          <label>
-            Descricao
-            <textarea value={procedureForm.description} onChange={(e) => setProcedureForm((p) => ({ ...p, description: e.target.value }))} />
-          </label>
-          <label>
-            Duracao padrao (min)
-            <input
-              type="number"
-              min="10"
-              value={procedureForm.defaultDurationMinutes}
-              onChange={(e) =>
-                setProcedureForm((p) => ({ ...p, defaultDurationMinutes: e.target.value }))
-              }
-              required
-            />
-          </label>
-          <label>
-            Valor padrao (centavos)
-            <input
-              type="number"
-              min="0"
-              value={procedureForm.defaultPriceCents}
-              onChange={(e) =>
-                setProcedureForm((p) => ({ ...p, defaultPriceCents: e.target.value }))
-              }
-              required
-            />
-          </label>
-
-          <div className="card-mini">
-            <strong>Preco por endereco</strong>
-            {pricesPreview.map(({ location, price }) => (
-              <label key={location._id}>
-                {location.name}
-                <input
-                  type="number"
-                  min="0"
-                  value={price}
-                  onChange={(e) => updateLocationPrice(location._id, e.target.value)}
-                />
-              </label>
-            ))}
-          </div>
-
-          <button type="submit">Salvar procedimento</button>
-        </form>
-      </div>
-
       <div className="card">
-        <h3>Enderecos cadastrados</h3>
-        <div className="list">
-          {locations.map((location) => (
-            <article key={location._id} className="card-mini">
-              <strong>{location.name}</strong>
-              <p>
-                {location.addressLine1} - {location.city}/{location.state}
-              </p>
-              <p>Valor consulta base: R$ {(location.consultationPriceCents / 100).toFixed(2)}</p>
-            </article>
-          ))}
+        <div className="table-header">
+          <h3>Enderecos</h3>
+          <button
+            type="button"
+            onClick={() => {
+              setEditingLocationId("");
+              setLocationForm(emptyLocation);
+              setShowLocationForm(true);
+            }}
+          >
+            + Adicionar endereco
+          </button>
+        </div>
+
+        {showLocationForm ? (
+          <form className="form-grid" onSubmit={saveLocation}>
+            <label>
+              Nome
+              <input value={locationForm.name} onChange={(e) => setLocationForm((p) => ({ ...p, name: e.target.value }))} required />
+            </label>
+            <label>
+              Endereco
+              <input value={locationForm.addressLine1} onChange={(e) => setLocationForm((p) => ({ ...p, addressLine1: e.target.value }))} required />
+            </label>
+            <label>
+              Cidade
+              <input value={locationForm.city} onChange={(e) => setLocationForm((p) => ({ ...p, city: e.target.value }))} required />
+            </label>
+            <label>
+              Estado
+              <input value={locationForm.state} onChange={(e) => setLocationForm((p) => ({ ...p, state: e.target.value }))} required />
+            </label>
+            <label>
+              CEP
+              <input value={locationForm.zipCode} onChange={(e) => setLocationForm((p) => ({ ...p, zipCode: e.target.value }))} required />
+            </label>
+            <label>
+              Valor base consulta (centavos)
+              <input
+                type="number"
+                min="0"
+                value={locationForm.consultationPriceCents}
+                onChange={(e) => setLocationForm((p) => ({ ...p, consultationPriceCents: e.target.value }))}
+                required
+              />
+            </label>
+            <div className="inline-actions">
+              <button type="submit">{editingLocationId ? "Atualizar" : "Salvar"}</button>
+              <button type="button" className="btn-ghost" onClick={resetLocationForm}>
+                Cancelar
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Endereco</th>
+                <th>Cidade/UF</th>
+                <th>Valor base</th>
+                <th>Acoes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {locations.map((location) => (
+                <tr key={location._id}>
+                  <td>{location.name}</td>
+                  <td>{location.addressLine1}</td>
+                  <td>{location.city}/{location.state}</td>
+                  <td>R$ {(location.consultationPriceCents / 100).toFixed(2)}</td>
+                  <td>
+                    <button type="button" className="btn-ghost" onClick={() => startEditLocation(location)}>
+                      Editar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
       <div className="card">
-        <h3>Procedimentos cadastrados</h3>
-        <div className="list">
-          {procedures.map((procedure) => (
-            <article key={procedure._id} className="card-mini">
-              <strong>{procedure.name}</strong>
-              <p>{procedure.description || "Sem descricao"}</p>
-              <p>Duracao: {procedure.defaultDurationMinutes} min</p>
-              <p>Valor padrao: R$ {(procedure.defaultPriceCents / 100).toFixed(2)}</p>
-              {procedure.pricesByLocation?.length ? (
-                <ul>
-                  {procedure.pricesByLocation.map((entry) => {
-                    const location = locations.find((item) => item._id === entry.location);
-                    return (
-                      <li key={`${procedure._id}-${entry.location}`}>
-                        {location?.name || "Local"}: R$ {(entry.priceCents / 100).toFixed(2)}
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : null}
-            </article>
-          ))}
+        <div className="table-header">
+          <h3>Procedimentos</h3>
+          <button
+            type="button"
+            onClick={() => {
+              setEditingProcedureId("");
+              setProcedureForm(emptyProcedure);
+              setShowProcedureForm(true);
+            }}
+          >
+            + Adicionar procedimento
+          </button>
+        </div>
+
+        {showProcedureForm ? (
+          <form className="form-grid" onSubmit={saveProcedure}>
+            <label>
+              Nome
+              <input value={procedureForm.name} onChange={(e) => setProcedureForm((p) => ({ ...p, name: e.target.value }))} required />
+            </label>
+            <label>
+              Descricao
+              <textarea value={procedureForm.description} onChange={(e) => setProcedureForm((p) => ({ ...p, description: e.target.value }))} />
+            </label>
+            <label>
+              Duracao (min)
+              <input type="number" min="10" value={procedureForm.defaultDurationMinutes} onChange={(e) => setProcedureForm((p) => ({ ...p, defaultDurationMinutes: e.target.value }))} required />
+            </label>
+            <label>
+              Valor padrao (centavos)
+              <input type="number" min="0" value={procedureForm.defaultPriceCents} onChange={(e) => setProcedureForm((p) => ({ ...p, defaultPriceCents: e.target.value }))} required />
+            </label>
+
+            <div className="card-mini">
+              <strong>Valor por endereco</strong>
+              {pricesPreview.map(({ location, price }) => (
+                <label key={location._id}>
+                  {location.name}
+                  <input
+                    type="number"
+                    min="0"
+                    value={price}
+                    onChange={(e) => updateLocationPrice(location._id, e.target.value)}
+                  />
+                </label>
+              ))}
+            </div>
+
+            <div className="inline-actions">
+              <button type="submit">{editingProcedureId ? "Atualizar" : "Salvar"}</button>
+              <button type="button" className="btn-ghost" onClick={resetProcedureForm}>
+                Cancelar
+              </button>
+            </div>
+          </form>
+        ) : null}
+
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Duracao</th>
+                <th>Valor padrao</th>
+                <th>Acoes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {procedures.map((procedure) => (
+                <tr key={procedure._id}>
+                  <td>{procedure.name}</td>
+                  <td>{procedure.defaultDurationMinutes} min</td>
+                  <td>R$ {(procedure.defaultPriceCents / 100).toFixed(2)}</td>
+                  <td>
+                    <button type="button" className="btn-ghost" onClick={() => startEditProcedure(procedure)}>
+                      Editar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </section>

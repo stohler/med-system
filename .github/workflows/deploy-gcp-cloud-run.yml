@@ -67,6 +67,7 @@ jobs:
           NODE_ENV: "production"
           WHATSAPP_MODE: "web"
           WHATSAPP_ENABLED: "true"
+          WHATSAPP_WEB_ENABLED: "false"
           SMTP_HOST: "smtp.gmail.com"
           SMTP_PORT: "587"
           SMTP_SECURE: "false"
@@ -92,7 +93,7 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --cpu 1 \
-            --memory 512Mi \
+            --memory 1Gi \
             --min-instances 0 \
             --max-instances 1 \
             --env-vars-file runtime-env.yaml

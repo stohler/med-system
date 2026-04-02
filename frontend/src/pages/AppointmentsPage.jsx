@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 
 dayjs.extend(isoWeek);
@@ -22,7 +23,6 @@ const TIME_SLOTS = Array.from({ length: 24 }).map((_, index) =>
 const emptyForm = {
   patientId: "",
   patientSearch: "",
-  birthDate: "",
   location: "",
   procedureType: "",
   startsAt: "",
@@ -49,6 +49,9 @@ export function AppointmentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
 
+  const navigate = useNavigate();
+  const locationRouter = useLocation();
+
   const load = async () => {
     const weekFrom = weekStart.startOf("day").toISOString();
     const weekTo = weekStart.add(6, "day").endOf("day").toISOString();
@@ -69,6 +72,22 @@ export function AppointmentsPage() {
   useEffect(() => {
     load().catch((err) => setError(err?.response?.data?.message || "Falha ao carregar agenda"));
   }, [weekStart.valueOf()]);
+
+  useEffect(() => {
+    const selected = locationRouter.state?.selectedPatient;
+    if (!selected) return;
+
+    setForm((prev) => ({
+      ...prev,
+      patientId: selected.id,
+      patientSearch: `${selected.fullName} - ${dayjs(selected.birthDate).format("DD/MM/YYYY")}`,
+    }));
+    if (locationRouter.state?.openAppointmentForm) {
+      setShowForm(true);
+    }
+
+    navigate(locationRouter.pathname, { replace: true, state: null });
+  }, [locationRouter.state]);
 
   const filteredPatients = useMemo(() => {
     const q = form.patientSearch.trim().toLowerCase();
@@ -99,7 +118,7 @@ export function AppointmentsPage() {
     const end = start.add(30, "minute");
 
     setForm((prev) => ({
-      ...emptyForm,
+      ...prev,
       location: prev.location || locations[0]?._id || "",
       procedureType: prev.procedureType || procedures[0]?._id || "",
       startsAt: toDateTimeLocal(start),
@@ -108,41 +127,26 @@ export function AppointmentsPage() {
     setShowForm(true);
   };
 
-  const askToCreatePatient = async () => {
+  const goToPatientCreate = () => {
+    const typed = form.patientSearch.trim();
+    navigate("/patients", {
+      state: {
+        returnTo: "/appointments",
+        prefillPatientName: typed,
+      },
+    });
+  };
+
+  const handlePatientBlur = () => {
     const typed = form.patientSearch.trim();
     if (!typed || form.patientId) return;
 
     const shouldCreate = window.confirm(
-      `Paciente "${typed}" nao encontrado. Deseja cadastrar agora?`
+      `Paciente "${typed}" nao encontrado. Deseja ir para o cadastro de paciente?`
     );
 
-    if (!shouldCreate) return;
-
-    const birth = window.prompt("Data de nascimento (AAAA-MM-DD):", dayjs().subtract(30, "year").format("YYYY-MM-DD"));
-    if (!birth) return;
-
-    const phone = window.prompt("Telefone:", "");
-    if (!phone) return;
-
-    const documentNumber = window.prompt("Documento (CPF/RG):", "");
-    if (!documentNumber) return;
-
-    try {
-      const { data } = await api.post("/patients", {
-        fullName: typed,
-        birthDate: new Date(`${birth}T00:00:00`).toISOString(),
-        documentNumber,
-        phone,
-        email: "",
-      });
-      await load();
-      setForm((prev) => ({
-        ...prev,
-        patientId: data.data._id,
-        patientSearch: patientLabel(data.data),
-      }));
-    } catch (err) {
-      setError(err?.response?.data?.message || "Falha ao cadastrar paciente automaticamente");
+    if (shouldCreate) {
+      goToPatientCreate();
     }
   };
 
@@ -159,19 +163,12 @@ export function AppointmentsPage() {
     setError("");
 
     try {
-      let patientId = form.patientId;
-
-      if (!patientId) {
-        await askToCreatePatient();
-        patientId = form.patientId;
-      }
-
-      if (!patientId) {
-        throw new Error("Selecione ou cadastre um paciente antes de agendar");
+      if (!form.patientId) {
+        throw new Error("Selecione um paciente ou clique para cadastrar.");
       }
 
       await api.post("/appointments", {
-        patient: patientId,
+        patient: form.patientId,
         location: form.location,
         procedureType: form.procedureType,
         startsAt: new Date(form.startsAt).toISOString(),
@@ -233,9 +230,7 @@ export function AppointmentsPage() {
                 setForm((prev) => ({ ...prev, patientSearch: e.target.value, patientId: "" }))
               }
               onBlur={() => {
-                setTimeout(() => {
-                  askToCreatePatient().catch(() => null);
-                }, 120);
+                setTimeout(() => handlePatientBlur(), 120);
               }}
               placeholder="Digite nome do paciente"
               required
@@ -258,6 +253,12 @@ export function AppointmentsPage() {
               </div>
             ) : null}
           </label>
+
+          {!form.patientId && form.patientSearch.trim() ? (
+            <button type="button" className="btn-ghost" onClick={goToPatientCreate}>
+              Cadastrar novo paciente
+            </button>
+          ) : null}
 
           <label>
             Endereco
