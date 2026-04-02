@@ -17,9 +17,24 @@ function createApp() {
 
   app.set("trust proxy", 1);
 
+  const normalizedOrigin = String(env.frontendOrigin || "")
+    .trim()
+    .replace(/\/$/, "")
+    .replace(/^https?:\/\//, "");
+
   app.use(
     cors({
-      origin: env.frontendOrigin,
+      origin(origin, callback) {
+        if (!origin) return callback(null, true);
+        const requestHost = String(origin)
+          .trim()
+          .replace(/\/$/, "")
+          .replace(/^https?:\/\//, "");
+        if (requestHost === normalizedOrigin) {
+          return callback(null, true);
+        }
+        return callback(new Error("CORS origin nao permitido"));
+      },
       credentials: true,
     })
   );
