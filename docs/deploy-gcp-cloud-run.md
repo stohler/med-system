@@ -24,8 +24,8 @@ Em `Settings > Secrets and variables > Actions > Secrets`, adicionar:
 
 - `GCP_PROJECT_ID`
 - `GCP_REGION` (ex: `us-central1`)
-- `GCP_ARTIFACT_REPO` (ex: `med-system`)
-- `GCP_SERVICE_NAME` (ex: `med-system-api`)
+- `GAR_REPOSITORY` (ex: `med-system`)
+- `CLOUD_RUN_SERVICE` (ex: `med-system-api`)
 - `GCP_SA_KEY` (conteúdo completo do JSON da service account)
 
 Secrets de aplicação (backend):
@@ -48,6 +48,7 @@ Secrets de aplicação (backend):
 - O workflow está em `.github/workflows/deploy-gcp-cloud-run.yml`
 - Aciona em push para `main` e manualmente (`workflow_dispatch`)
 - Builda imagem do backend, envia ao Artifact Registry e faz deploy no Cloud Run
+- O workflow valida variáveis obrigatórias antes de build/push para evitar erro de `invalid reference format`
 
 ## 4) Observação sobre free tier e MongoDB
 

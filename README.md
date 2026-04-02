@@ -135,22 +135,25 @@ Ele faz:
 No repositório GitHub, configure:
 
 - `GCP_PROJECT_ID` (ex.: `meu-projeto-123`)
-- `GCP_WIF_PROVIDER` (Workload Identity Provider full name)
-- `GCP_SERVICE_ACCOUNT` (service account para deploy)
+- `GCP_REGION` (ex.: `us-central1`)
+- `GCP_ARTIFACT_REPO` (ex.: `med-system`)
+- `GCP_SERVICE_NAME` (ex.: `med-system-api`)
+- `GCP_SA_KEY` (JSON completo da service account)
 - `MONGODB_URI` (Mongo Atlas free tier)
 - `JWT_SECRET`
 - `ENCRYPTION_KEY`
+- `FRONTEND_ORIGIN`
 - `SMTP_USER`
 - `SMTP_PASS` (App Password do Gmail)
+- `SMTP_FROM`
 
 ### Variaveis ajustaveis no workflow
 
-No arquivo de workflow:
+No arquivo de workflow (lidas via GitHub Secrets):
 
-- `GCP_REGION` (padrao `us-central1`)
-- `SERVICE_NAME` (padrao `med-system-api`)
-- `AR_REPOSITORY` (padrao `cloud-run-source-deploy`)
-- `FRONTEND_ORIGIN`
+- `GCP_REGION`
+- `GCP_SERVICE_NAME`
+- `GCP_ARTIFACT_REPO`
 
 ### Como disparar deploy
 

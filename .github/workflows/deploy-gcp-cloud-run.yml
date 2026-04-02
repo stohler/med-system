@@ -8,12 +8,13 @@ on:
     paths:
       - "backend/**"
       - ".github/workflows/deploy-gcp-cloud-run.yml"
+  workflow_dispatch:
 
 env:
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  GCP_REGION: ${{ secrets.GCP_REGION }}
-  GAR_REPOSITORY: ${{ secrets.GAR_REPOSITORY }}
-  CLOUD_RUN_SERVICE: ${{ secrets.CLOUD_RUN_SERVICE }}
+  GCP_REGION: ${{ secrets.GCP_REGION != '' && secrets.GCP_REGION || 'us-central1' }}
+  GAR_REPOSITORY: ${{ secrets.GCP_ARTIFACT_REPO != '' && secrets.GCP_ARTIFACT_REPO || 'med-system' }}
+  CLOUD_RUN_SERVICE: ${{ secrets.GCP_SERVICE_NAME != '' && secrets.GCP_SERVICE_NAME || 'med-system-api' }}
   IMAGE_NAME: med-system-backend
 
 jobs:
@@ -40,12 +41,49 @@ jobs:
       - name: Configure Docker auth for GAR
         run: gcloud auth configure-docker "${{ env.GCP_REGION }}-docker.pkg.dev" --quiet
 
+      - name: Validate deploy variables
+        run: |
+          set -euo pipefail
+          for var in GCP_PROJECT_ID GCP_REGION GAR_REPOSITORY CLOUD_RUN_SERVICE; do
+            if [ -z "${!var}" ]; then
+              echo "Variavel obrigatoria ausente: $var"
+              exit 1
+            fi
+          done
+
       - name: Build and push backend image
         run: |
-          IMAGE_URI="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          GAR_REPO_CLEAN="${{ env.GAR_REPOSITORY }}"
+          GAR_REPO_CLEAN="${GAR_REPO_CLEAN#/}"
+          GAR_REPO_CLEAN="${GAR_REPO_CLEAN%/}"
+          IMAGE_URI="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${GAR_REPO_CLEAN}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
           docker build -t "${IMAGE_URI}" ./backend
           docker push "${IMAGE_URI}"
           echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
+
+      - name: Generate runtime env file
+        run: |
+          cat > runtime-env.yaml << 'EOF'
+          NODE_ENV: "production"
+          PORT: "8080"
+          WHATSAPP_MODE: "web"
+          WHATSAPP_ENABLED: "true"
+          SMTP_HOST: "smtp.gmail.com"
+          SMTP_PORT: "587"
+          SMTP_SECURE: "false"
+          MONGODB_URI: "${{ secrets.MONGODB_URI }}"
+          JWT_SECRET: "${{ secrets.JWT_SECRET }}"
+          JWT_EXPIRES_IN: "${{ secrets.JWT_EXPIRES_IN }}"
+          ENCRYPTION_KEY: "${{ secrets.ENCRYPTION_KEY }}"
+          SMTP_USER: "${{ secrets.SMTP_USER }}"
+          SMTP_PASS: "${{ secrets.SMTP_PASS }}"
+          SMTP_FROM: "${{ secrets.SMTP_FROM }}"
+          GOOGLE_CLIENT_ID: "${{ secrets.GOOGLE_CLIENT_ID }}"
+          GOOGLE_CLIENT_SECRET: "${{ secrets.GOOGLE_CLIENT_SECRET }}"
+          GOOGLE_REDIRECT_URI: "${{ secrets.GOOGLE_REDIRECT_URI }}"
+          GOOGLE_CALENDAR_ID: "${{ secrets.GOOGLE_CALENDAR_ID }}"
+          FRONTEND_ORIGIN: "${{ secrets.FRONTEND_ORIGIN }}"
+          EOF
 
       - name: Deploy to Cloud Run
         run: |
@@ -58,5 +96,4 @@ jobs:
             --memory 512Mi \
             --min-instances 0 \
             --max-instances 1 \
-            --set-env-vars "NODE_ENV=production,PORT=8080,WHATSAPP_MODE=web,WHATSAPP_ENABLED=true,SMTP_HOST=smtp.gmail.com,SMTP_PORT=587,SMTP_SECURE=false" \
-            --set-secrets "JWT_SECRET=JWT_SECRET:latest,ENCRYPTION_KEY=ENCRYPTION_KEY:latest,MONGODB_URI=MONGODB_URI:latest,SMTP_USER=SMTP_USER:latest,SMTP_PASS=SMTP_PASS:latest,SMTP_FROM=SMTP_FROM:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,GOOGLE_REDIRECT_URI=GOOGLE_REDIRECT_URI:latest,GOOGLE_CALENDAR_ID=GOOGLE_CALENDAR_ID:latest,FRONTEND_ORIGIN=FRONTEND_ORIGIN:latest"
+            --env-vars-file runtime-env.yaml
