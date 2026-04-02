@@ -165,3 +165,36 @@ Push para branch `main` ou execucao manual em **Actions > Deploy Backend to Clou
 - Para manter sessao de forma robusta, o ideal e persistir auth em storage externo e usar instancia sempre ativa (pode sair do free tier).
 - Mesmo assim, o modo `web` foi mantido como solicitado e habilitado por variavel (`WHATSAPP_MODE=web`).
 
+## Deploy do frontend no Cloud Run
+
+Foi adicionado workflow em:
+
+`/.github/workflows/deploy-frontend-cloud-run.yml`
+
+Ele faz:
+1. Build da imagem Docker do frontend
+2. Push para Artifact Registry
+3. Deploy do frontend no Cloud Run
+4. Build do frontend com `VITE_API_URL` apontando para o backend
+
+### Secrets do GitHub para frontend
+
+- `GCP_PROJECT_ID`
+- `GCP_REGION` (ex.: `us-central1`)
+- `GCP_ARTIFACT_REPO` (ex.: `med-system`)
+- `GCP_FRONTEND_SERVICE_NAME` (ex.: `med-system-web`)
+- `GCP_SA_KEY`
+- `FRONTEND_API_URL` (ex.: `https://med-api.stohler.com.br/api`)
+
+### Dominios personalizados solicitados
+
+- Frontend: `med.stohler.com.br`
+- Backend API: `med-api.stohler.com.br`
+
+No Cloud Run:
+1. Abra o servico backend e frontend
+2. Em cada servico, acesse **Manage custom domains**
+3. Adicione os dominios acima
+4. No painel DNS do seu provedor, crie os registros solicitados pelo Google (normalmente `CNAME`/`A` com verification)
+5. Aguarde emissao SSL gerenciada pelo Google
+

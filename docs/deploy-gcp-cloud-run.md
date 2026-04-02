@@ -1,6 +1,6 @@
 # Deploy no Google Cloud Run (foco em free tier)
 
-Este guia prepara o backend para deploy automatizado via GitHub Actions.
+Este guia prepara backend e frontend para deploy automatizado via GitHub Actions.
 
 ## 1) Criar recursos no GCP
 
@@ -24,8 +24,9 @@ Em `Settings > Secrets and variables > Actions > Secrets`, adicionar:
 
 - `GCP_PROJECT_ID`
 - `GCP_REGION` (ex: `us-central1`)
-- `GAR_REPOSITORY` (ex: `med-system`)
-- `CLOUD_RUN_SERVICE` (ex: `med-system-api`)
+- `GCP_ARTIFACT_REPO` (ex: `med-system`)
+- `GCP_SERVICE_NAME` (ex: `med-system-api`)
+- `GCP_FRONTEND_SERVICE_NAME` (ex: `med-system-frontend`)
 - `GCP_SA_KEY` (conteúdo completo do JSON da service account)
 
 Secrets de aplicação (backend):
@@ -43,12 +44,17 @@ Secrets de aplicação (backend):
 - `GOOGLE_REDIRECT_URI`
 - `GOOGLE_CALENDAR_ID`
 
+Secrets para build do frontend:
+
+- `FRONTEND_API_URL` (ex: `https://med-api.stohler.com.br/api`)
+
 ## 3) Fluxo de deploy
 
-- O workflow está em `.github/workflows/deploy-gcp-cloud-run.yml`
-- Aciona em push para `main` e manualmente (`workflow_dispatch`)
-- Builda imagem do backend, envia ao Artifact Registry e faz deploy no Cloud Run
-- O workflow valida variáveis obrigatórias antes de build/push para evitar erro de `invalid reference format`
+- Backend workflow: `.github/workflows/deploy-gcp-cloud-run.yml`
+- Frontend workflow: `.github/workflows/deploy-frontend-cloud-run.yml`
+- Ambos acionam em push para `main` e manualmente (`workflow_dispatch`)
+- O frontend builda com `VITE_API_URL` vindo de `FRONTEND_API_URL`
+- Os workflows validam variáveis obrigatórias antes de build/push para evitar erro de `invalid reference format`
 
 ## 4) Observação sobre free tier e MongoDB
 
@@ -62,4 +68,16 @@ Cloud Run não inclui banco Mongo gerenciado no free tier. Opções comuns:
 - O projeto está configurado para `WHATSAPP_MODE=web` por padrão
 - Em Cloud Run, sessão local/arquivo pode ser efêmera
 - Para produção mais estável com múltiplas réplicas, recomendado usar `WHATSAPP_MODE=business`
+
+## 6) Domínios customizados (med.stohler.com.br / med-api.stohler.com.br)
+
+1. No Cloud Run, abra o serviço backend e adicione domínio customizado:
+   - `med-api.stohler.com.br`
+2. No Cloud Run, abra o serviço frontend e adicione domínio customizado:
+   - `med.stohler.com.br`
+3. No provedor DNS da zona `stohler.com.br`, crie os registros solicitados pelo Google (normalmente CNAME/TXT para validação e roteamento).
+4. Após propagação e certificado SSL automático ativo:
+   - Ajuste secret `FRONTEND_API_URL=https://med-api.stohler.com.br/api`
+   - Ajuste secret `FRONTEND_ORIGIN=https://med.stohler.com.br`
+   - Rode novamente os workflows backend/frontend.
 
