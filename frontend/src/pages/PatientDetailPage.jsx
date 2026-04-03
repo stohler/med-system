@@ -70,11 +70,11 @@ export function PatientDetailPage() {
         </label>
         <label>
           Documento
-          <input value={patient.documentNumber} onChange={(e) => setPatient((p) => ({ ...p, documentNumber: e.target.value }))} required />
+          <input value={patient.documentNumber || ""} onChange={(e) => setPatient((p) => ({ ...p, documentNumber: e.target.value }))} />
         </label>
         <label>
           Telefone
-          <input value={patient.phone} onChange={(e) => setPatient((p) => ({ ...p, phone: e.target.value }))} required />
+          <input value={patient.phone || ""} onChange={(e) => setPatient((p) => ({ ...p, phone: e.target.value }))} />
         </label>
         <label>
           E-mail

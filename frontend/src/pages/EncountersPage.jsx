@@ -27,6 +27,7 @@ export function EncountersPage() {
   const [procedures, setProcedures] = useState([]);
   const [activeAppointment, setActiveAppointment] = useState(null);
   const [activeEncounterId, setActiveEncounterId] = useState("");
+  const [editingEncounterId, setEditingEncounterId] = useState("");
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -47,6 +48,7 @@ export function EncountersPage() {
   const toast = useToast();
 
   const hasContext = Boolean(activeAppointment?.id || activeAppointment?._id);
+  const activePatientId = activeAppointment?.patient?._id || activeAppointment?.patient || "";
 
   const resolveLocationName = (locationRef) => {
     if (!locationRef) return "-";
@@ -113,16 +115,21 @@ export function EncountersPage() {
   }, []);
 
   const filteredEncounters = useMemo(() => {
+    const scopedEncounters = activePatientId
+      ? encounters.filter(
+          (item) => String(item.patient?._id || item.patient) === String(activePatientId)
+        )
+      : encounters;
     const q = search.trim().toLowerCase();
-    if (!q) return encounters;
+    if (!q) return scopedEncounters;
 
-    return encounters.filter((item) => {
+    return scopedEncounters.filter((item) => {
       const patient = item.patient?.fullName || "";
       const diagnosis = item.diagnosticHypothesis || item.diagnosis || "";
       const conduct = item.conduct || "";
       return `${patient} ${diagnosis} ${conduct}`.toLowerCase().includes(q);
     });
-  }, [encounters, search]);
+  }, [encounters, search, activePatientId]);
 
   const lastEncounterForAppointment = useMemo(() => {
     const appointmentId = activeAppointment?.id || activeAppointment?._id;
@@ -158,12 +165,39 @@ export function EncountersPage() {
           "Selecione um agendamento na agenda antes de iniciar atendimento."
         );
       }
-      const { data } = await api.post("/encounters", encounterForm);
+      const payload = {
+        historyOfCurrentIllness: encounterForm.historyOfCurrentIllness,
+        comorbidities: encounterForm.comorbidities,
+        comorbiditiesDenied: encounterForm.comorbiditiesDenied,
+        allergies: encounterForm.allergies,
+        allergiesDenied: encounterForm.allergiesDenied,
+        medicationsInUse: encounterForm.medicationsInUse,
+        medicationsDenied: encounterForm.medicationsDenied,
+        physicalExam: encounterForm.physicalExam,
+        diagnosticHypothesis: encounterForm.diagnosticHypothesis,
+        conduct: encounterForm.conduct,
+      };
+      let data;
+      if (editingEncounterId) {
+        const response = await api.put(`/encounters/${editingEncounterId}`, payload);
+        data = response.data;
+      } else {
+        const response = await api.post("/encounters", {
+          ...payload,
+          appointment: encounterForm.appointment,
+        });
+        data = response.data;
+      }
       setActiveEncounterId(data.encounter._id);
+      setEditingEncounterId("");
       setShowExamSection(false);
       setShowSurgerySection(false);
       await load();
-      toast.success("Evolucao salva com sucesso.");
+      toast.success(
+        editingEncounterId
+          ? "Evolucao atualizada com sucesso."
+          : "Evolucao salva com sucesso."
+      );
     } catch (err) {
       const message =
         err?.response?.data?.message ||
@@ -172,6 +206,48 @@ export function EncountersPage() {
       setError(message);
       toast.error(message);
     }
+  };
+
+  const startEditEncounter = (encounter) => {
+    const appointment = encounter.appointment;
+    const ctx = {
+      id: appointment?._id || appointment,
+      patient: encounter.patient,
+      procedureType: appointment?.procedureType || null,
+      location: appointment?.location || null,
+      startsAt: appointment?.startsAt,
+      endsAt: appointment?.endsAt,
+    };
+    setActiveAppointment(ctx);
+    setActiveEncounterId(encounter._id);
+    setEditingEncounterId(encounter._id);
+    setEncounterForm({
+      appointment: ctx.id || "",
+      historyOfCurrentIllness:
+        encounter.currentIllnessHistory || encounter.historyOfPresentIllness || "",
+      comorbidities: encounter.comorbidities || "",
+      comorbiditiesDenied: Boolean(
+        encounter.deniesComorbidities || encounter.comorbiditiesDenied
+      ),
+      allergies: encounter.allergies || "",
+      allergiesDenied: Boolean(encounter.deniesAllergies || encounter.allergiesDenied),
+      medicationsInUse: encounter.medicationsInUse || encounter.currentMedications || "",
+      medicationsDenied: Boolean(
+        encounter.deniesMedicationsInUse || encounter.medicationsDenied
+      ),
+      physicalExam: encounter.physicalExam || "",
+      diagnosticHypothesis: encounter.diagnosticHypothesis || "",
+      conduct: encounter.conduct || "",
+    });
+    localStorage.setItem("active_appointment_context", JSON.stringify(ctx));
+  };
+
+  const resetEncounterEditor = () => {
+    setEditingEncounterId("");
+    setEncounterForm((prev) => ({
+      ...encounterInitial,
+      appointment: prev.appointment || activeAppointment?.id || activeAppointment?._id || "",
+    }));
   };
 
   const addExam = async (event) => {
@@ -241,6 +317,7 @@ export function EncountersPage() {
     };
     setActiveAppointment(ctx);
     setActiveEncounterId(encounter._id);
+    setEditingEncounterId("");
     setEncounterForm((prev) => ({ ...prev, appointment: ctx.id }));
     localStorage.setItem("active_appointment_context", JSON.stringify(ctx));
   };
@@ -311,7 +388,14 @@ export function EncountersPage() {
       )}
 
       <form className="card form-grid" onSubmit={createEncounter}>
-        <h3>Nova evolucao</h3>
+        <div className="table-header">
+          <h3>{editingEncounterId ? "Editar evolucao" : "Nova evolucao"}</h3>
+          {editingEncounterId ? (
+            <button type="button" className="btn-ghost" onClick={resetEncounterEditor}>
+              Nova evolucao
+            </button>
+          ) : null}
+        </div>
         <label>
           Historia da doenca atual
           <textarea
@@ -612,6 +696,13 @@ export function EncountersPage() {
                         onClick={() => selectEncounterFromTable(item)}
                       >
                         Selecionar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => startEditEncounter(item)}
+                      >
+                        Editar evolucao
                       </button>
                       <button
                         type="button"

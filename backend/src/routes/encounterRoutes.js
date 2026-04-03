@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const {
   createEncounter,
+  updateEncounter,
   listEncounters,
   addExamResult,
   issuePrescription,
@@ -13,6 +14,7 @@ const router = Router();
 router.use(requireAuth);
 router.get("/", listEncounters);
 router.post("/", requireRole("doctor", "admin"), createEncounter);
+router.put("/:id", requireRole("doctor", "admin"), updateEncounter);
 router.post("/:id/exams", requireRole("doctor", "admin"), addExamResult);
 router.post("/:id/prescriptions", requireRole("doctor", "admin"), issuePrescription);
 router.post("/:id/schedule-surgery", requireRole("doctor", "admin"), scheduleSurgery);

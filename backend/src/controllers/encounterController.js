@@ -60,6 +60,24 @@ const scheduleSurgerySchema = z.object({
   notes: z.string().optional().default(""),
 });
 
+const updateEncounterSchema = z.object({
+  historyOfPresentIllness: z.string().optional(),
+  historyOfCurrentIllness: z.string().optional(),
+  comorbidities: z.string().optional(),
+  denyComorbidities: z.boolean().optional(),
+  comorbiditiesDenied: z.boolean().optional(),
+  allergies: z.string().optional(),
+  denyAllergies: z.boolean().optional(),
+  allergiesDenied: z.boolean().optional(),
+  currentMedications: z.string().optional(),
+  medicationsInUse: z.string().optional(),
+  denyCurrentMedications: z.boolean().optional(),
+  medicationsDenied: z.boolean().optional(),
+  physicalExam: z.string().optional(),
+  diagnosticHypothesis: z.string().optional(),
+  conduct: z.string().optional(),
+});
+
 const createEncounter = asyncHandler(async (req, res) => {
   const payload = encounterSchema.parse(req.body);
   const deniesComorbidities =
@@ -76,31 +94,95 @@ const createEncounter = asyncHandler(async (req, res) => {
     throw new NotFoundError("Agendamento nao encontrado");
   }
 
-  const existing = await Encounter.findOne({ appointment: appointment._id });
-  if (existing) {
-    throw new AppError("Ja existe evolucao para este agendamento", 409);
+  let encounter;
+  try {
+    encounter = await Encounter.create({
+      appointment: appointment._id,
+      patient: appointment.patient,
+      clinician: req.userId,
+      currentIllnessHistory,
+      comorbidities: deniesComorbidities ? "" : payload.comorbidities,
+      deniesComorbidities,
+      allergies: deniesAllergies ? "" : payload.allergies,
+      deniesAllergies,
+      medicationsInUse: deniesMedications ? "" : medicationsInUse,
+      deniesMedicationsInUse: deniesMedications,
+      physicalExam: payload.physicalExam,
+      diagnosticHypothesis: payload.diagnosticHypothesis,
+      conduct: payload.conduct,
+    });
+  } catch (error) {
+    if (error?.code === 11000 && error?.keyPattern?.appointment) {
+      throw new AppError(
+        "Indice antigo de banco detectado para agendamento unico. Reinicie o backend para aplicar migracao de indice.",
+        409
+      );
+    }
+    throw error;
   }
-
-  const encounter = await Encounter.create({
-    appointment: appointment._id,
-    patient: appointment.patient,
-    clinician: req.userId,
-    currentIllnessHistory,
-    comorbidities: deniesComorbidities ? "" : payload.comorbidities,
-    deniesComorbidities,
-    allergies: deniesAllergies ? "" : payload.allergies,
-    deniesAllergies,
-    medicationsInUse: deniesMedications ? "" : medicationsInUse,
-    deniesMedicationsInUse: deniesMedications,
-    physicalExam: payload.physicalExam,
-    diagnosticHypothesis: payload.diagnosticHypothesis,
-    conduct: payload.conduct,
-  });
 
   appointment.status = "completed";
   await appointment.save();
 
   res.status(201).json({ encounter });
+});
+
+const updateEncounter = asyncHandler(async (req, res) => {
+  const payload = updateEncounterSchema.parse(req.body);
+  const encounter = await Encounter.findById(req.params.id);
+  if (!encounter) {
+    throw new NotFoundError("Evolucao nao encontrada");
+  }
+
+  const deniesComorbidities =
+    payload.comorbiditiesDenied ?? payload.denyComorbidities ?? encounter.deniesComorbidities;
+  const deniesAllergies =
+    payload.allergiesDenied ?? payload.denyAllergies ?? encounter.deniesAllergies;
+  const deniesMedications =
+    payload.medicationsDenied ??
+    payload.denyCurrentMedications ??
+    encounter.deniesMedicationsInUse;
+
+  if (payload.historyOfCurrentIllness !== undefined || payload.historyOfPresentIllness !== undefined) {
+    encounter.currentIllnessHistory =
+      payload.historyOfCurrentIllness ?? payload.historyOfPresentIllness ?? "";
+  }
+
+  encounter.deniesComorbidities = Boolean(deniesComorbidities);
+  encounter.deniesAllergies = Boolean(deniesAllergies);
+  encounter.deniesMedicationsInUse = Boolean(deniesMedications);
+
+  if (encounter.deniesComorbidities) {
+    encounter.comorbidities = "";
+  } else if (payload.comorbidities !== undefined) {
+    encounter.comorbidities = payload.comorbidities;
+  }
+
+  if (encounter.deniesAllergies) {
+    encounter.allergies = "";
+  } else if (payload.allergies !== undefined) {
+    encounter.allergies = payload.allergies;
+  }
+
+  const medicationsInUse = payload.medicationsInUse ?? payload.currentMedications;
+  if (encounter.deniesMedicationsInUse) {
+    encounter.medicationsInUse = "";
+  } else if (medicationsInUse !== undefined) {
+    encounter.medicationsInUse = medicationsInUse;
+  }
+
+  if (payload.physicalExam !== undefined) {
+    encounter.physicalExam = payload.physicalExam;
+  }
+  if (payload.diagnosticHypothesis !== undefined) {
+    encounter.diagnosticHypothesis = payload.diagnosticHypothesis;
+  }
+  if (payload.conduct !== undefined) {
+    encounter.conduct = payload.conduct;
+  }
+
+  await encounter.save();
+  res.json({ encounter });
 });
 
 const listEncounters = asyncHandler(async (req, res) => {
@@ -235,6 +317,7 @@ const scheduleSurgery = asyncHandler(async (req, res) => {
 
 module.exports = {
   createEncounter,
+  updateEncounter,
   listEncounters,
   addExamResult,
   issuePrescription,

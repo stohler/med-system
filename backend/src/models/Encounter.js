@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 const encounterSchema = new mongoose.Schema(
   {
-    appointment: { type: mongoose.Schema.Types.ObjectId, ref: "Appointment", required: true, unique: true },
+    appointment: { type: mongoose.Schema.Types.ObjectId, ref: "Appointment", required: true },
     patient: { type: mongoose.Schema.Types.ObjectId, ref: "Patient", required: true },
     clinician: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     anamnesis: { type: String, default: "" },
@@ -22,5 +22,7 @@ const encounterSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+encounterSchema.index({ appointment: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Encounter", encounterSchema);

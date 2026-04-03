@@ -172,7 +172,6 @@ export function PatientsPage() {
             <input
               value={form.documentNumber}
               onChange={(e) => setForm((p) => ({ ...p, documentNumber: e.target.value }))}
-              required
             />
           </label>
           <label>
@@ -180,7 +179,6 @@ export function PatientsPage() {
             <input
               value={form.phone}
               onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
-              required
             />
           </label>
           <label>
@@ -244,8 +242,8 @@ export function PatientsPage() {
                   </button>
                 </td>
                 <td>{patient.birthDate ? dayjs(patient.birthDate).format("DD/MM/YYYY") : "-"}</td>
-                <td>{patient.documentNumber}</td>
-                <td>{patient.phone}</td>
+                <td>{patient.documentNumber || "-"}</td>
+                <td>{patient.phone || "-"}</td>
                 <td>{patient.email || "-"}</td>
                 <td>
                   <button type="button" className="btn-ghost" onClick={() => startEdit(patient)}>

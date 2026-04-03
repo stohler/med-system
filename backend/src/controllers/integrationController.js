@@ -28,6 +28,8 @@ const whatsappStatus = asyncHandler(async (_req, res) => {
 
 const whatsappQr = asyncHandler(async (_req, res) => {
   try {
+    // eslint-disable-next-line no-console
+    console.log("[whatsapp] solicitacao de QR recebida");
     await initWhatsApp();
     const qrCodeDataUrl = await getWhatsappQrCode();
     const status = getWhatsappStatus();
@@ -96,12 +98,20 @@ const whatsappTestMessage = asyncHandler(async (req, res) => {
 });
 
 const whatsappRestart = asyncHandler(async (_req, res) => {
-  await restartWhatsApp();
-  const status = getWhatsappStatus();
+  // eslint-disable-next-line no-console
+  console.log("[whatsapp] solicitacao de reinicio recebida");
+  const status = await restartWhatsApp();
+  if (!status.ready && status.lastError) {
+    return res.status(503).json({
+      restarted: false,
+      message: `Reinicio concluido com alerta: ${status.lastError}`,
+      status,
+    });
+  }
   return res.json({
     restarted: true,
     message: "Cliente WhatsApp reiniciado. Gere um novo QR Code e escaneie novamente.",
-    status,
+    status: status || getWhatsappStatus(),
   });
 });
 

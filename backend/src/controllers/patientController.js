@@ -2,6 +2,32 @@ const { Patient, Consent, Encounter } = require("../models");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { encryptText, decryptText } = require("../utils/crypto");
 
+function normalizeOptionalString(value) {
+  if (value === undefined || value === null) return undefined;
+  const normalized = String(value).trim();
+  return normalized || undefined;
+}
+
+function buildPatientPayload(body) {
+  const payload = { ...body };
+  const documentNumber = normalizeOptionalString(payload.documentNumber);
+  const phone = normalizeOptionalString(payload.phone);
+
+  if (documentNumber === undefined) {
+    delete payload.documentNumber;
+  } else {
+    payload.documentNumber = documentNumber;
+  }
+
+  if (phone === undefined) {
+    delete payload.phone;
+  } else {
+    payload.phone = phone;
+  }
+
+  return payload;
+}
+
 const listPatients = asyncHandler(async (req, res) => {
   const q = req.query.q?.trim();
   const page = Math.max(Number(req.query.page || 1), 1);
@@ -53,7 +79,7 @@ const getPatientById = asyncHandler(async (req, res) => {
 });
 
 const createPatient = asyncHandler(async (req, res) => {
-  const payload = { ...req.body };
+  const payload = buildPatientPayload(req.body);
   if (payload.notes) {
     payload.encryptedNotes = encryptText(payload.notes);
     delete payload.notes;
@@ -75,13 +101,43 @@ const createPatient = asyncHandler(async (req, res) => {
 });
 
 const updatePatient = asyncHandler(async (req, res) => {
-  const payload = { ...req.body };
+  const payload = buildPatientPayload(req.body);
   if (payload.notes !== undefined) {
     payload.encryptedNotes = encryptText(payload.notes);
     delete payload.notes;
   }
 
-  const patient = await Patient.findByIdAndUpdate(req.params.id, payload, {
+  const unset = {};
+  if (
+    Object.prototype.hasOwnProperty.call(req.body, "documentNumber") &&
+    normalizeOptionalString(req.body.documentNumber) === undefined
+  ) {
+    unset.documentNumber = "";
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(req.body, "phone") &&
+    normalizeOptionalString(req.body.phone) === undefined
+  ) {
+    unset.phone = "";
+  }
+
+  const updateOperation = {};
+  if (Object.keys(payload).length > 0) {
+    updateOperation.$set = payload;
+  }
+  if (Object.keys(unset).length > 0) {
+    updateOperation.$unset = unset;
+  }
+
+  if (Object.keys(updateOperation).length === 0) {
+    const unchanged = await Patient.findById(req.params.id);
+    if (!unchanged) {
+      return res.status(404).json({ message: "Paciente nao encontrado" });
+    }
+    return res.json({ data: unchanged });
+  }
+
+  const patient = await Patient.findByIdAndUpdate(req.params.id, updateOperation, {
     new: true,
     runValidators: true,
   });
