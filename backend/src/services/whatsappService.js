@@ -19,6 +19,8 @@ let ready = false;
 let initializing = false;
 let lastError = "";
 let forceWebUnavailable = false;
+let connectionState = "idle";
+let lastStateAt = null;
 
 function getWhatsappStatus() {
   return {
@@ -30,7 +32,27 @@ function getWhatsappStatus() {
     webSessionEnabled: env.whatsappWebEnabled,
     libraryLoaded: Boolean(ClientLib && LocalAuthLib),
     lastError: lastError || null,
+    connectionState,
+    lastStateAt,
   };
+}
+
+async function destroyClient() {
+  if (!client) return;
+  try {
+    await client.destroy();
+  } catch (_error) {
+    // noop
+  } finally {
+    client = null;
+    ready = false;
+    initializing = false;
+  }
+}
+
+function markState(state) {
+  connectionState = state;
+  lastStateAt = new Date().toISOString();
 }
 
 async function initWhatsApp() {
@@ -42,16 +64,20 @@ async function initWhatsApp() {
   if (!env.whatsappEnabled || env.whatsappMode !== "web") return;
   if (!ClientLib || !LocalAuthLib || !env.whatsappWebEnabled) {
     lastError = "WhatsApp Web indisponivel no ambiente atual.";
+    markState("unavailable");
     return;
   }
   if (initializing || client) return;
 
   initializing = true;
+  markState("initializing");
   client = new ClientLib({
     authStrategy: new LocalAuthLib({
       clientId: "clinic-system",
       dataPath: env.whatsappSessionPath,
     }),
+    takeoverOnConflict: true,
+    takeoverTimeoutMs: 0,
     puppeteer: {
       args: [
         "--no-sandbox",
@@ -68,25 +94,42 @@ async function initWhatsApp() {
     lastQrDataUrl = await qrcode.toDataURL(qr);
     ready = false;
     lastError = "";
+    markState("qr");
+  });
+
+  client.on("authenticated", () => {
+    lastError = "";
+    markState("authenticated");
+  });
+
+  client.on("loading_screen", (_percent, message) => {
+    if (message) {
+      lastError = `Conectando WhatsApp: ${message}`;
+    }
+    markState("loading");
   });
 
   client.on("ready", () => {
     ready = true;
     lastQrDataUrl = null;
     lastError = "";
+    markState("ready");
   });
 
   client.on("auth_failure", (message) => {
     ready = false;
     lastError = message || "Falha de autenticacao WhatsApp.";
+    markState("auth_failure");
   });
 
   client.on("disconnected", () => {
     ready = false;
     lastError = "Sessao WhatsApp desconectada.";
+    markState("disconnected");
   });
 
   client.on("change_state", (state) => {
+    markState(String(state || "").toLowerCase() || "unknown");
     if (state === "CONFLICT" || state === "UNPAIRED") {
       ready = false;
     }
@@ -101,8 +144,11 @@ async function initWhatsApp() {
       forceWebUnavailable = true;
       lastError =
         "Memoria insuficiente para iniciar WhatsApp Web. Aumente memoria do Cloud Run para 1Gi ou use modo business.";
+      markState("memory_error");
+    } else {
+      markState("init_error");
     }
-    client = null;
+    await destroyClient();
   } finally {
     initializing = false;
   }
@@ -118,6 +164,15 @@ async function getWhatsappQrCode() {
   }
 
   return lastQrDataUrl;
+}
+
+async function restartWhatsApp() {
+  await destroyClient();
+  lastQrDataUrl = null;
+  lastError = "";
+  markState("restarting");
+  forceWebUnavailable = false;
+  await initWhatsApp();
 }
 
 async function sendViaWhatsappBusiness({ phone, text }) {
@@ -166,5 +221,6 @@ module.exports = {
   getWhatsappStatus,
   initWhatsApp,
   getWhatsappQrCode,
+  restartWhatsApp,
   sendWhatsappNotification,
 };

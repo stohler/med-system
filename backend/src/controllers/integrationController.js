@@ -7,6 +7,8 @@ const {
   getWhatsappStatus,
   getWhatsappQrCode,
   initWhatsApp,
+  restartWhatsApp,
+  sendWhatsappNotification,
 } = require("../services/whatsappService");
 
 const googleAuthUrl = asyncHandler(async (_req, res) => {
@@ -31,6 +33,13 @@ const whatsappQr = asyncHandler(async (_req, res) => {
     const status = getWhatsappStatus();
 
     if (!qrCodeDataUrl) {
+      if (status.ready) {
+        return res.json({
+          qrCodeDataUrl: null,
+          reason: "WhatsApp ja conectado. Use o teste de envio para validar a sessao.",
+          status,
+        });
+      }
       let reason = "QR indisponivel no momento. Aguarde alguns segundos e tente novamente.";
       if (status.mode !== "web") {
         reason = "WHATSAPP_MODE diferente de web. Ajuste para web para usar QR Code.";
@@ -56,9 +65,51 @@ const whatsappQr = asyncHandler(async (_req, res) => {
   }
 });
 
+const whatsappTestMessage = asyncHandler(async (req, res) => {
+  const phone = String(req.body.phone || "").trim();
+  const text =
+    String(req.body.text || "").trim() ||
+    "Teste de envio do sistema clinico.";
+
+  if (!phone) {
+    return res.status(400).json({ sent: false, message: "Informe o numero para teste." });
+  }
+
+  try {
+    const sent = await sendWhatsappNotification({ phone, text });
+    if (!sent) {
+      return res.status(503).json({
+        sent: false,
+        message:
+          "WhatsApp ainda nao esta pronto para envio. Verifique status da conexao antes de testar.",
+        status: getWhatsappStatus(),
+      });
+    }
+    return res.json({ sent: true, message: "Mensagem de teste enviada com sucesso." });
+  } catch (error) {
+    return res.status(503).json({
+      sent: false,
+      message: error?.message || "Falha ao enviar mensagem de teste.",
+      status: getWhatsappStatus(),
+    });
+  }
+});
+
+const whatsappRestart = asyncHandler(async (_req, res) => {
+  await restartWhatsApp();
+  const status = getWhatsappStatus();
+  return res.json({
+    restarted: true,
+    message: "Cliente WhatsApp reiniciado. Gere um novo QR Code e escaneie novamente.",
+    status,
+  });
+});
+
 module.exports = {
   googleAuthUrl,
   googleTokenExchange,
   whatsappStatus,
   whatsappQr,
+  whatsappTestMessage,
+  whatsappRestart,
 };

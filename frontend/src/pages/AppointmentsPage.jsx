@@ -143,10 +143,20 @@ export function AppointmentsPage() {
   };
 
   const goToAttend = (appointment) => {
+    const appointmentContext = {
+      id: appointment._id,
+      patient: appointment.patient || null,
+      procedureType: appointment.procedureType || null,
+      location: appointment.location || null,
+      startsAt: appointment.startsAt,
+      endsAt: appointment.endsAt,
+    };
+    localStorage.setItem("active_appointment_context", JSON.stringify(appointmentContext));
     navigate("/encounters", {
       state: {
         openEncounterForm: true,
         appointmentId: appointment._id,
+        appointmentContext,
       },
     });
   };
@@ -385,7 +395,7 @@ export function AppointmentsPage() {
           })}
 
           {TIME_SLOTS.map((slot) => (
-            <>
+            <div key={`row-${slot}`} style={{ display: "contents" }}>
               <div key={`h-${slot}`} className="week-grid-hour">
                 {slot}
               </div>
@@ -409,7 +419,7 @@ export function AppointmentsPage() {
                   </div>
                 );
               })}
-            </>
+            </div>
           ))}
         </div>
       </div>

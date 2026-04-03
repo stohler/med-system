@@ -9,28 +9,30 @@ const encounterInitial = {
   appointment: "",
   historyOfCurrentIllness: "",
   comorbidities: "",
-  comorbiditiesDenied: false,
+  comorbiditiesDenied: true,
   allergies: "",
-  allergiesDenied: false,
+  allergiesDenied: true,
   medicationsInUse: "",
-  medicationsDenied: false,
+  medicationsDenied: true,
   physicalExam: "",
   diagnosticHypothesis: "",
   conduct: "",
 };
 
 export function EncountersPage() {
-  const [appointments, setAppointments] = useState([]);
   const [encounters, setEncounters] = useState([]);
   const [locations, setLocations] = useState([]);
   const [procedures, setProcedures] = useState([]);
+  const [activeAppointment, setActiveAppointment] = useState(null);
+  const [activeEncounterId, setActiveEncounterId] = useState("");
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [showExamSection, setShowExamSection] = useState(false);
+  const [showSurgerySection, setShowSurgerySection] = useState(false);
 
   const [encounterForm, setEncounterForm] = useState(encounterInitial);
-  const [examForm, setExamForm] = useState({ encounterId: "", examType: "", findings: "" });
+  const [examForm, setExamForm] = useState({ examType: "", findings: "" });
   const [surgeryForm, setSurgeryForm] = useState({
     surgeryProcedureType: "",
     location: "",
@@ -41,39 +43,56 @@ export function EncountersPage() {
   const locationRouter = useLocation();
   const navigate = useNavigate();
 
-  const selectedAppointment = useMemo(
-    () => appointments.find((item) => item._id === encounterForm.appointment) || null,
-    [appointments, encounterForm.appointment]
-  );
-
-  const selectedEncounterForSurgery = useMemo(
-    () => encounters.find((item) => item._id === examForm.encounterId) || null,
-    [encounters, examForm.encounterId]
-  );
+  const hasContext = Boolean(activeAppointment?.id || activeAppointment?._id);
 
   const load = async () => {
-    const [appointmentsRes, encountersRes, locationsRes, proceduresRes] = await Promise.all([
-      api.get("/appointments", { params: { status: "completed" } }).catch(() => ({ data: { appointments: [] } })),
+    const [encountersRes, locationsRes, proceduresRes] = await Promise.all([
       api.get("/encounters"),
       api.get("/locations"),
       api.get("/procedures"),
     ]);
 
-    setAppointments(appointmentsRes.data.appointments || []);
-    setEncounters(encountersRes.data.encounters || []);
+    const loadedEncounters = encountersRes.data.encounters || [];
+    setEncounters(loadedEncounters);
     setLocations(locationsRes.data.locations || []);
     setProcedures(proceduresRes.data.procedures || []);
+    return loadedEncounters;
+  };
+
+  const syncEncounterFromContext = (context, sourceEncounters) => {
+    if (!context) return;
+    const appointmentId = context.id || context._id;
+    const linked = sourceEncounters.find(
+      (encounter) => String(encounter.appointment?._id || encounter.appointment) === String(appointmentId)
+    );
+    if (linked) {
+      setActiveEncounterId(linked._id);
+    }
   };
 
   useEffect(() => {
-    load().catch(() => setError("Falha ao carregar atendimentos"));
-  }, []);
-
-  useEffect(() => {
-    if (locationRouter.state?.openEncounterForm && locationRouter.state?.appointmentId) {
-      setEncounterForm((prev) => ({ ...prev, appointment: locationRouter.state.appointmentId }));
+    const stateContext = locationRouter.state?.appointmentContext;
+    const storageContext = localStorage.getItem("active_appointment_context");
+    let parsedStorage = null;
+    try {
+      parsedStorage = storageContext ? JSON.parse(storageContext) : null;
+    } catch (_error) {
+      parsedStorage = null;
     }
-  }, [locationRouter.state]);
+    const context = stateContext || parsedStorage;
+    if (context) {
+      setActiveAppointment(context);
+      setEncounterForm((prev) => ({ ...prev, appointment: context.id || context._id || "" }));
+    }
+
+    load()
+      .then((loadedEncounters) => {
+        if (context) {
+          syncEncounterFromContext(context, loadedEncounters);
+        }
+      })
+      .catch(() => setError("Falha ao carregar atendimentos"));
+  }, []);
 
   const filteredEncounters = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -98,11 +117,15 @@ export function EncountersPage() {
     event.preventDefault();
     setError("");
     try {
-      await api.post("/encounters", encounterForm);
-      setEncounterForm(encounterInitial);
+      if (!hasContext) throw new Error("Selecione um agendamento na agenda antes de iniciar atendimento.");
+      const { data } = await api.post("/encounters", encounterForm);
+      setActiveEncounterId(data.encounter._id);
+      setShowExamSection(false);
+      setShowSurgerySection(false);
       await load();
+      alert("Evolucao salva com sucesso.");
     } catch (err) {
-      setError(err?.response?.data?.message || "Nao foi possivel salvar evolucao");
+      setError(err?.response?.data?.message || err.message || "Nao foi possivel salvar evolucao");
     }
   };
 
@@ -110,15 +133,16 @@ export function EncountersPage() {
     event.preventDefault();
     setError("");
     try {
-      await api.post(`/encounters/${examForm.encounterId}/exams`, {
+      if (!activeEncounterId) throw new Error("Salve uma evolucao antes de inserir exame.");
+      await api.post(`/encounters/${activeEncounterId}/exams`, {
         examType: examForm.examType,
         findings: examForm.findings,
       });
-      setExamForm({ encounterId: "", examType: "", findings: "" });
+      setExamForm({ examType: "", findings: "" });
       setShowExamSection(false);
       await load();
     } catch (err) {
-      setError(err?.response?.data?.message || "Falha ao inserir exame");
+      setError(err?.response?.data?.message || err.message || "Falha ao inserir exame");
     }
   };
 
@@ -126,26 +150,36 @@ export function EncountersPage() {
     event.preventDefault();
     setError("");
     try {
-      if (!examForm.encounterId) {
-        throw new Error("Selecione uma evolucao para programar cirurgia.");
-      }
-      await api.post(`/encounters/${examForm.encounterId}/schedule-surgery`, {
+      if (!activeEncounterId) throw new Error("Salve uma evolucao antes de programar cirurgia.");
+      await api.post(`/encounters/${activeEncounterId}/schedule-surgery`, {
         surgeryProcedureType: surgeryForm.surgeryProcedureType,
         location: surgeryForm.location,
         plannedDate: new Date(surgeryForm.plannedDate).toISOString(),
         notes: surgeryForm.notes,
       });
-      setSurgeryForm({
-        surgeryProcedureType: "",
-        location: "",
-        plannedDate: "",
-        notes: "",
-      });
+      setSurgeryForm({ surgeryProcedureType: "", location: "", plannedDate: "", notes: "" });
+      setShowSurgerySection(false);
       await load();
       alert("Cirurgia programada e inserida na agenda.");
     } catch (err) {
       setError(err?.response?.data?.message || err.message || "Falha ao programar cirurgia");
     }
+  };
+
+  const selectEncounterFromTable = (encounter) => {
+    const appointment = encounter.appointment;
+    const ctx = {
+      id: appointment?._id || appointment,
+      patient: encounter.patient,
+      procedureType: appointment?.procedureType || null,
+      location: appointment?.location || null,
+      startsAt: appointment?.startsAt,
+      endsAt: appointment?.endsAt,
+    };
+    setActiveAppointment(ctx);
+    setActiveEncounterId(encounter._id);
+    setEncounterForm((prev) => ({ ...prev, appointment: ctx.id }));
+    localStorage.setItem("active_appointment_context", JSON.stringify(ctx));
   };
 
   return (
@@ -157,38 +191,29 @@ export function EncountersPage() {
         </button>
       </div>
 
-      {selectedAppointment ? (
-        <div className="card patient-header">
-          <strong>{selectedAppointment.patient?.fullName}</strong>
-          <span>Nascimento: {selectedAppointment.patient?.birthDate ? dayjs(selectedAppointment.patient.birthDate).format("DD/MM/YYYY") : "-"}</span>
-          <span>Procedimento: {selectedAppointment.procedureType?.name || "-"}</span>
-          <span>Local: {selectedAppointment.location?.name || "-"}</span>
+      {activeAppointment ? (
+        <div className="clinical-header">
+          <div><strong>Paciente</strong><span>{activeAppointment.patient?.fullName || "-"}</span></div>
+          <div><strong>Nascimento</strong><span>{activeAppointment.patient?.birthDate ? dayjs(activeAppointment.patient.birthDate).format("DD/MM/YYYY") : "-"}</span></div>
+          <div><strong>Procedimento</strong><span>{activeAppointment.procedureType?.name || "-"}</span></div>
+          <div><strong>Local</strong><span>{activeAppointment.location?.name || "-"}</span></div>
+          <div><strong>Data/Hora</strong><span>{activeAppointment.startsAt ? dayjs(activeAppointment.startsAt).format("DD/MM/YYYY HH:mm") : "-"}</span></div>
+          <div><strong>Evolucao ativa</strong><span>{activeEncounterId || "Nao criada"}</span></div>
         </div>
-      ) : null}
+      ) : (
+        <div className="card warning-box">
+          Selecione um agendamento na agenda para iniciar a evolucao clinica.
+        </div>
+      )}
 
       <form className="card form-grid" onSubmit={createEncounter}>
         <h3>Nova evolucao</h3>
-        <label>
-          Agendamento
-          <select
-            value={encounterForm.appointment}
-            onChange={(e) => setEncounterForm((p) => ({ ...p, appointment: e.target.value }))}
-            required
-          >
-            <option value="">Selecione</option>
-            {appointments.map((a) => (
-              <option key={a._id} value={a._id}>
-                {a.patient?.fullName} - {a.procedureType?.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
         <label>
           Historia da doenca atual
           <textarea
             value={encounterForm.historyOfCurrentIllness}
             onChange={(e) => setEncounterForm((p) => ({ ...p, historyOfCurrentIllness: e.target.value }))}
+            required
           />
         </label>
 
@@ -272,33 +297,21 @@ export function EncountersPage() {
           />
         </label>
 
-        <button type="submit">Salvar evolucao</button>
+        <button type="submit" disabled={!hasContext}>Salvar evolucao</button>
       </form>
 
       <div className="inline-actions">
         <button type="button" className="btn-ghost" onClick={() => setShowExamSection((prev) => !prev)}>
           {showExamSection ? "Ocultar resultado de exames" : "Adicionar resultado de exames"}
         </button>
+        <button type="button" className="btn-ghost" onClick={() => setShowSurgerySection((prev) => !prev)}>
+          {showSurgerySection ? "Ocultar agendar cirurgia" : "Programar cirurgia"}
+        </button>
       </div>
 
       {showExamSection ? (
         <form className="card form-grid" onSubmit={addExam}>
           <h3>Inserir resultado de exame (opcional)</h3>
-          <label>
-            Evolucao
-            <select
-              value={examForm.encounterId}
-              onChange={(e) => setExamForm((p) => ({ ...p, encounterId: e.target.value }))}
-              required
-            >
-              <option value="">Selecione</option>
-              {encounters.map((item) => (
-                <option key={item._id} value={item._id}>
-                  {item.patient?.fullName || item.patient}
-                </option>
-              ))}
-            </select>
-          </label>
           <label>
             Tipo de exame
             <input value={examForm.examType} onChange={(e) => setExamForm((p) => ({ ...p, examType: e.target.value }))} required />
@@ -307,83 +320,69 @@ export function EncountersPage() {
             Resultado
             <textarea value={examForm.findings} onChange={(e) => setExamForm((p) => ({ ...p, findings: e.target.value }))} required />
           </label>
-          <button type="submit">Salvar exame</button>
+          <button type="submit" disabled={!activeEncounterId}>Salvar exame</button>
         </form>
       ) : null}
 
-      <form className="card form-grid" onSubmit={scheduleSurgery}>
-        <h3>Programar cirurgia</h3>
-        <label>
-          Paciente
-          <select
-            value={encounterForm.appointment}
-            onChange={(e) => setEncounterForm((p) => ({ ...p, appointment: e.target.value }))}
-            required
-          >
-            <option value="">Selecione</option>
-            {appointments.map((a) => (
-              <option key={a._id} value={a._id}>
-                {a.patient?.fullName} - {a.procedureType?.name}
-              </option>
-            ))}
-          </select>
-        </label>
+      {showSurgerySection ? (
+        <form className="card form-grid" onSubmit={scheduleSurgery}>
+          <h3>Programar cirurgia</h3>
+          {activeAppointment?.patient ? (
+            <div className="card-mini">
+              <strong>Paciente:</strong> {activeAppointment.patient.fullName || "-"}
+            </div>
+          ) : null}
 
-        {selectedAppointment?.patient ? (
-          <div className="card-mini">
-            <strong>Paciente:</strong> {selectedAppointment.patient.fullName || "-"}
-          </div>
-        ) : null}
+          <label>
+            Cirurgia
+            <select
+              value={surgeryForm.surgeryProcedureType}
+              onChange={(e) => setSurgeryForm((p) => ({ ...p, surgeryProcedureType: e.target.value }))}
+              required
+            >
+              <option value="">Selecione</option>
+              {procedures.map((item) => (
+                <option key={item._id} value={item._id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
-        <label>
-          Cirurgia
-          <select
-            value={surgeryForm.surgeryProcedureType}
-            onChange={(e) => setSurgeryForm((p) => ({ ...p, surgeryProcedureType: e.target.value }))}
-            required
-          >
-            <option value="">Selecione</option>
-            {procedures.map((item) => (
-              <option key={item._id} value={item._id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
+          <label>
+            Local
+            <select
+              value={surgeryForm.location}
+              onChange={(e) => setSurgeryForm((p) => ({ ...p, location: e.target.value }))}
+              required
+            >
+              <option value="">Selecione</option>
+              {locations.map((item) => (
+                <option key={item._id} value={item._id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
-        <label>
-          Local
-          <select
-            value={surgeryForm.location}
-            onChange={(e) => setSurgeryForm((p) => ({ ...p, location: e.target.value }))}
-            required
-          >
-            <option value="">Selecione</option>
-            {locations.map((item) => (
-              <option key={item._id} value={item._id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
+          <label>
+            Data prevista
+            <input
+              type="datetime-local"
+              value={surgeryForm.plannedDate}
+              onChange={(e) => setSurgeryForm((p) => ({ ...p, plannedDate: e.target.value }))}
+              required
+            />
+          </label>
 
-        <label>
-          Data prevista
-          <input
-            type="datetime-local"
-            value={surgeryForm.plannedDate}
-            onChange={(e) => setSurgeryForm((p) => ({ ...p, plannedDate: e.target.value }))}
-            required
-          />
-        </label>
+          <label>
+            Observacoes
+            <textarea value={surgeryForm.notes} onChange={(e) => setSurgeryForm((p) => ({ ...p, notes: e.target.value }))} />
+          </label>
 
-        <label>
-          Observacoes
-          <textarea value={surgeryForm.notes} onChange={(e) => setSurgeryForm((p) => ({ ...p, notes: e.target.value }))} />
-        </label>
-
-        <button type="submit">Programar cirurgia</button>
-      </form>
+          <button type="submit" disabled={!activeEncounterId}>Programar cirurgia</button>
+        </form>
+      ) : null}
 
       {error ? <p className="error">{error}</p> : null}
 
@@ -419,35 +418,40 @@ export function EncountersPage() {
                   <td>{item.conduct || "-"}</td>
                   <td>{dayjs(item.createdAt).format("DD/MM/YYYY HH:mm")}</td>
                   <td>
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      onClick={async () => {
-                        try {
-                          const response = await api.post(
-                            `/encounters/${item._id}/prescriptions`,
-                            {
-                              medications: [
-                                {
-                                  name: "Medicamento exemplo",
-                                  instructions: "Tomar 1 comprimido a cada 12h",
-                                  durationDays: 7,
-                                },
-                              ],
-                              notes: "Uso orientado em consulta",
-                              sendByEmail: true,
-                            },
-                            { responseType: "blob" }
-                          );
-                          const url = window.URL.createObjectURL(response.data);
-                          window.open(url, "_blank");
-                        } catch {
-                          setError("Falha ao emitir receita");
-                        }
-                      }}
-                    >
-                      Receita
-                    </button>
+                    <div className="inline-actions">
+                      <button type="button" className="btn-ghost" onClick={() => selectEncounterFromTable(item)}>
+                        Selecionar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={async () => {
+                          try {
+                            const response = await api.post(
+                              `/encounters/${item._id}/prescriptions`,
+                              {
+                                medications: [
+                                  {
+                                    name: "Medicamento exemplo",
+                                    instructions: "Tomar 1 comprimido a cada 12h",
+                                    durationDays: 7,
+                                  },
+                                ],
+                                notes: "Uso orientado em consulta",
+                                sendByEmail: true,
+                              },
+                              { responseType: "blob" }
+                            );
+                            const url = window.URL.createObjectURL(response.data);
+                            window.open(url, "_blank");
+                          } catch {
+                            setError("Falha ao emitir receita");
+                          }
+                        }}
+                      >
+                        Receita
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

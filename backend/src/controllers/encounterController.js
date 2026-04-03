@@ -16,13 +16,18 @@ const { sendMail } = require("../services/emailService");
 
 const encounterSchema = z.object({
   appointment: z.string().min(1),
-  historyOfPresentIllness: z.string().optional().default(""),
+  historyOfPresentIllness: z.string().optional(),
+  historyOfCurrentIllness: z.string().optional(),
   comorbidities: z.string().optional().default(""),
-  denyComorbidities: z.boolean().optional().default(false),
+  denyComorbidities: z.boolean().optional(),
+  comorbiditiesDenied: z.boolean().optional(),
   allergies: z.string().optional().default(""),
-  denyAllergies: z.boolean().optional().default(false),
-  currentMedications: z.string().optional().default(""),
-  denyCurrentMedications: z.boolean().optional().default(false),
+  denyAllergies: z.boolean().optional(),
+  allergiesDenied: z.boolean().optional(),
+  currentMedications: z.string().optional(),
+  medicationsInUse: z.string().optional(),
+  denyCurrentMedications: z.boolean().optional(),
+  medicationsDenied: z.boolean().optional(),
   physicalExam: z.string().optional().default(""),
   diagnosticHypothesis: z.string().optional().default(""),
   conduct: z.string().optional().default(""),
@@ -57,6 +62,15 @@ const scheduleSurgerySchema = z.object({
 
 const createEncounter = asyncHandler(async (req, res) => {
   const payload = encounterSchema.parse(req.body);
+  const deniesComorbidities =
+    payload.comorbiditiesDenied ?? payload.denyComorbidities ?? false;
+  const deniesAllergies = payload.allergiesDenied ?? payload.denyAllergies ?? false;
+  const deniesMedications =
+    payload.medicationsDenied ?? payload.denyCurrentMedications ?? false;
+  const currentIllnessHistory =
+    payload.historyOfCurrentIllness ?? payload.historyOfPresentIllness ?? "";
+  const medicationsInUse = payload.medicationsInUse ?? payload.currentMedications ?? "";
+
   const appointment = await Appointment.findById(payload.appointment);
   if (!appointment) {
     throw new NotFoundError("Agendamento nao encontrado");
@@ -71,15 +85,13 @@ const createEncounter = asyncHandler(async (req, res) => {
     appointment: appointment._id,
     patient: appointment.patient,
     clinician: req.userId,
-    historyOfPresentIllness: payload.historyOfPresentIllness,
-    comorbidities: payload.denyComorbidities ? "" : payload.comorbidities,
-    denyComorbidities: payload.denyComorbidities,
-    allergies: payload.denyAllergies ? "" : payload.allergies,
-    denyAllergies: payload.denyAllergies,
-    currentMedications: payload.denyCurrentMedications
-      ? ""
-      : payload.currentMedications,
-    denyCurrentMedications: payload.denyCurrentMedications,
+    currentIllnessHistory,
+    comorbidities: deniesComorbidities ? "" : payload.comorbidities,
+    deniesComorbidities,
+    allergies: deniesAllergies ? "" : payload.allergies,
+    deniesAllergies,
+    medicationsInUse: deniesMedications ? "" : medicationsInUse,
+    deniesMedicationsInUse: deniesMedications,
     physicalExam: payload.physicalExam,
     diagnosticHypothesis: payload.diagnosticHypothesis,
     conduct: payload.conduct,
