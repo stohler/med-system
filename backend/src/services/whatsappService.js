@@ -1,5 +1,6 @@
 const qrcode = require("qrcode");
 const axios = require("axios");
+const fs = require("fs");
 const { env } = require("../config/env");
 
 let ClientLib = null;
@@ -21,6 +22,19 @@ let lastError = "";
 let forceWebUnavailable = false;
 let connectionState = "idle";
 let lastStateAt = null;
+const initTimeoutMs = Number(process.env.WHATSAPP_INIT_TIMEOUT_MS || 90000);
+
+function getChromiumPath() {
+  const candidateFromEnv = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN;
+  const candidates = [
+    candidateFromEnv,
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/google-chrome",
+  ].filter(Boolean);
+
+  return candidates.find((path) => fs.existsSync(path));
+}
 
 function getWhatsappStatus() {
   return {
@@ -71,6 +85,7 @@ async function initWhatsApp() {
 
   initializing = true;
   markState("initializing");
+  const executablePath = getChromiumPath();
   client = new ClientLib({
     authStrategy: new LocalAuthLib({
       clientId: "clinic-system",
@@ -85,8 +100,16 @@ async function initWhatsApp() {
         "--disable-dev-shm-usage",
         "--single-process",
         "--disable-gpu",
+        "--no-zygote",
+        "--disable-extensions",
+        "--disable-background-networking",
+        "--disable-default-apps",
+        "--disable-sync",
+        "--disable-translate",
+        "--mute-audio",
       ],
       headless: true,
+      executablePath,
     },
   });
 
@@ -136,15 +159,24 @@ async function initWhatsApp() {
   });
 
   try {
-    await client.initialize();
+    await Promise.race([
+      client.initialize(),
+      new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error("Timeout ao iniciar WhatsApp Web. Tente reiniciar a sessao."));
+        }, initTimeoutMs);
+      }),
+    ]);
   } catch (error) {
     const message = error?.message || "Falha ao iniciar cliente WhatsApp.";
     lastError = message;
     if (/memory|ENOMEM|Target closed|browser has disconnected/i.test(message)) {
       forceWebUnavailable = true;
       lastError =
-        "Memoria insuficiente para iniciar WhatsApp Web. Aumente memoria do Cloud Run para 1Gi ou use modo business.";
+        "Memoria insuficiente para iniciar WhatsApp Web. Aumente memoria do Cloud Run para 2Gi ou use modo business.";
       markState("memory_error");
+    } else if (/timeout/i.test(message)) {
+      markState("init_timeout");
     } else {
       markState("init_error");
     }

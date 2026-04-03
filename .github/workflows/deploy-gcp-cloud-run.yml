@@ -68,6 +68,8 @@ jobs:
           WHATSAPP_MODE: "web"
           WHATSAPP_ENABLED: "true"
           WHATSAPP_WEB_ENABLED: "true"
+          PUPPETEER_EXECUTABLE_PATH: "/usr/bin/chromium"
+          WHATSAPP_INIT_TIMEOUT_MS: "90000"
           SMTP_HOST: "smtp.gmail.com"
           SMTP_PORT: "587"
           SMTP_SECURE: "false"
@@ -93,7 +95,7 @@ jobs:
             --platform managed \
             --allow-unauthenticated \
             --cpu 1 \
-            --memory 1Gi \
+            --memory 2Gi \
             --min-instances 0 \
             --max-instances 1 \
             --env-vars-file runtime-env.yaml

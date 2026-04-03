@@ -318,7 +318,66 @@ button {
 }
 
 .week-event.clickable:hover {
-  background: #dbeafe;
+  filter: brightness(0.98);
+}
+
+.location-chip {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.toast-viewport {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 1000;
+  display: grid;
+  gap: 8px;
+  width: min(340px, calc(100vw - 24px));
+}
+
+.toast-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+}
+
+.toast-success {
+  background: #ecfdf5;
+  border-color: #10b981;
+  color: #065f46;
+}
+
+.toast-error {
+  background: #fef2f2;
+  border-color: #ef4444;
+  color: #991b1b;
+}
+
+.toast-info {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #1e40af;
+}
+
+.toast-close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0 4px;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .autocomplete-wrap {

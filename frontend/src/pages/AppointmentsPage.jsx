@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { getLocationColor } from "../utils/locationColors";
 
 dayjs.extend(isoWeek);
 
@@ -37,6 +38,15 @@ function patientLabel(patient) {
 
 function toDateTimeLocal(value) {
   return dayjs(value).format("YYYY-MM-DDTHH:mm");
+}
+
+function locationCardStyle(location) {
+  const color = getLocationColor(location?._id || location || "default");
+  return {
+    background: color.bg,
+    borderColor: color.border,
+    color: color.text,
+  };
 }
 
 export function AppointmentsPage() {
@@ -410,10 +420,13 @@ export function AppointmentsPage() {
                         className="week-event clickable"
                         onClick={() => handleAppointmentClick(item)}
                         title="Clique para editar ou atender"
+                        style={locationCardStyle(item.location)}
                       >
                         <strong>{item.patient?.fullName}</strong>
                         <span>{item.procedureType?.name}</span>
-                        <span>{item.location?.name}</span>
+                        <span className="location-chip" style={locationCardStyle(item.location)}>
+                          {item.location?.name}
+                        </span>
                       </article>
                     ))}
                   </div>
@@ -432,6 +445,12 @@ export function AppointmentsPage() {
               {selectedAppointment.patient?.fullName} -{" "}
               {dayjs(selectedAppointment.startsAt).format("DD/MM/YYYY HH:mm")}
             </p>
+            <div
+              className="location-chip"
+              style={locationCardStyle(selectedAppointment.location)}
+            >
+              {selectedAppointment.location?.name || "Sem local"}
+            </div>
             <div className="inline-actions">
               <button
                 type="button"

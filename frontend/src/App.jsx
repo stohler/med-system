@@ -10,6 +10,7 @@ import { EncountersPage } from "./pages/EncountersPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { IntegrationsPage } from "./pages/IntegrationsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { ToastProvider } from "./toast";
 
 function HomeRoutes() {
   const { token } = useAuth();
@@ -42,8 +43,10 @@ function HomeRoutes() {
 
 export function App() {
   return (
-    <AuthProvider>
-      <HomeRoutes />
-    </AuthProvider>
+    <ToastProvider>
+      <AuthProvider>
+        <HomeRoutes />
+      </AuthProvider>
+    </ToastProvider>
   );
 }

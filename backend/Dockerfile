@@ -1,13 +1,12 @@
 FROM node:22
 
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 # Dependencias para rodar whatsapp-web.js (Chromium) no Cloud Run.
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    chromium \
     fonts-liberation \
     libasound2 \
     libatk-bridge2.0-0 \
@@ -46,6 +45,10 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
+
+COPY package*.json ./
+RUN npm install
+COPY . .
 
 EXPOSE 4000
 CMD ["npm", "run", "start"]
