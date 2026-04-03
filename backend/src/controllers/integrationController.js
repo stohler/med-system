@@ -33,6 +33,8 @@ const whatsappQr = asyncHandler(async (_req, res) => {
     await initWhatsApp();
     const qrCodeDataUrl = await getWhatsappQrCode();
     const status = getWhatsappStatus();
+    // eslint-disable-next-line no-console
+    console.log("[whatsapp] status apos requisicao QR", status);
 
     if (!qrCodeDataUrl) {
       if (status.ready) {
@@ -101,6 +103,8 @@ const whatsappRestart = asyncHandler(async (_req, res) => {
   // eslint-disable-next-line no-console
   console.log("[whatsapp] solicitacao de reinicio recebida");
   const status = await restartWhatsApp();
+  // eslint-disable-next-line no-console
+  console.log("[whatsapp] status apos reinicio", status);
   if (!status.ready && status.lastError) {
     return res.status(503).json({
       restarted: false,
