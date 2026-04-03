@@ -3,6 +3,8 @@ import dayjs from "dayjs";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 
+const PAGE_SIZE = 10;
+
 const initialForm = {
   fullName: "",
   birthDate: "",
@@ -19,6 +21,8 @@ export function PatientsPage() {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -43,6 +47,23 @@ export function PatientsPage() {
   useEffect(() => {
     load().catch(() => setError("Falha ao carregar pacientes"));
   }, []);
+
+  const filteredPatients = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return patients;
+    return patients.filter((patient) =>
+      `${patient.fullName} ${patient.documentNumber || ""} ${patient.phone || ""} ${patient.email || ""}`
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [patients, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredPatients.length / PAGE_SIZE));
+  const pagedPatients = filteredPatients.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [totalPages, page]);
 
   const resetForm = () => {
     setEditingId("");
@@ -188,6 +209,17 @@ export function PatientsPage() {
       ) : null}
 
       <div className="card table-wrap">
+        <div className="table-header">
+          <h3>Lista</h3>
+          <input
+            placeholder="Buscar paciente"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
         <table className="data-table">
           <thead>
             <tr>
@@ -200,9 +232,17 @@ export function PatientsPage() {
             </tr>
           </thead>
           <tbody>
-            {patients.map((patient) => (
+            {pagedPatients.map((patient) => (
               <tr key={patient._id}>
-                <td>{patient.fullName}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => navigate(`/patients/${patient._id}`)}
+                  >
+                    {patient.fullName}
+                  </button>
+                </td>
                 <td>{patient.birthDate ? dayjs(patient.birthDate).format("DD/MM/YYYY") : "-"}</td>
                 <td>{patient.documentNumber}</td>
                 <td>{patient.phone}</td>
@@ -216,6 +256,18 @@ export function PatientsPage() {
             ))}
           </tbody>
         </table>
+
+        <div className="inline-actions">
+          <button type="button" className="btn-ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+            Anterior
+          </button>
+          <span>
+            Pagina {page} de {totalPages}
+          </span>
+          <button type="button" className="btn-ghost" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+            Proxima
+          </button>
+        </div>
       </div>
     </section>
   );

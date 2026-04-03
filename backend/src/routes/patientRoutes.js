@@ -2,6 +2,7 @@ const { Router } = require("express");
 const { z } = require("zod");
 const {
   listPatients,
+  getPatientById,
   createPatient,
   updatePatient,
   deletePatient,
@@ -32,6 +33,7 @@ const patientSchema = z.object({
 
 router.use(requireAuth);
 router.get("/", listPatients);
+router.get("/:id", getPatientById);
 router.post("/", validateRequest(patientSchema), createPatient);
 router.put("/:id", validateRequest(patientSchema.partial()), updatePatient);
 router.delete("/:id", deletePatient);

@@ -2,6 +2,8 @@ const { z } = require("zod");
 const {
   Encounter,
   Appointment,
+  ProcedureType,
+  ClinicLocation,
   ExamResult,
   Prescription,
   Patient,
@@ -37,6 +39,13 @@ const prescriptionSchema = z.object({
     .min(1),
   notes: z.string().optional().default(""),
   sendByEmail: z.boolean().optional().default(false),
+});
+
+const scheduleSurgerySchema = z.object({
+  surgeryProcedureType: z.string().min(1),
+  location: z.string().min(1),
+  plannedDate: z.coerce.date(),
+  notes: z.string().optional().default(""),
 });
 
 const createEncounter = asyncHandler(async (req, res) => {
@@ -152,9 +161,54 @@ const issuePrescription = asyncHandler(async (req, res) => {
     .send(pdfBuffer);
 });
 
+const scheduleSurgery = asyncHandler(async (req, res) => {
+  const payload = scheduleSurgerySchema.parse(req.body);
+  const encounter = await Encounter.findById(req.params.id);
+  if (!encounter) {
+    throw new NotFoundError("Evolucao nao encontrada");
+  }
+
+  const plannedStart = new Date(payload.plannedDate);
+  plannedStart.setSeconds(0, 0);
+  if (plannedStart < new Date()) {
+    throw new AppError("Data prevista deve ser futura.", 400);
+  }
+
+  const plannedEnd = new Date(plannedStart);
+  const [procedure, location] = await Promise.all([
+    ProcedureType.findById(payload.surgeryProcedureType),
+    ClinicLocation.findById(payload.location),
+  ]);
+  if (!procedure || !location) {
+    throw new NotFoundError("Procedimento ou local nao encontrado");
+  }
+  plannedEnd.setMinutes(plannedEnd.getMinutes() + (procedure.defaultDurationMinutes || 120));
+
+  const locationPrice = (procedure.pricesByLocation || []).find(
+    (entry) => String(entry.location) === String(location._id)
+  );
+  const calculatedPriceCents =
+    (locationPrice?.priceCents ?? procedure.defaultPriceCents ?? 0) +
+    (location.consultationPriceCents || 0);
+
+  const appointment = await Appointment.create({
+    patient: encounter.patient,
+    location: payload.location,
+    procedureType: payload.surgeryProcedureType,
+    startsAt: plannedStart,
+    endsAt: plannedEnd,
+    status: "scheduled",
+    notes: payload.notes || "Cirurgia programada em atendimento",
+    calculatedPriceCents,
+  });
+
+  res.status(201).json({ appointment });
+});
+
 module.exports = {
   createEncounter,
   listEncounters,
   addExamResult,
   issuePrescription,
+  scheduleSurgery,
 };

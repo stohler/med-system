@@ -127,6 +127,42 @@ export function AppointmentsPage() {
     setShowForm(true);
   };
 
+  const openEditForm = (appointment) => {
+    setForm({
+      patientId: appointment.patient?._id || appointment.patient,
+      patientSearch: patientLabel(appointment.patient || {}),
+      location: appointment.location?._id || appointment.location,
+      procedureType: appointment.procedureType?._id || appointment.procedureType,
+      startsAt: toDateTimeLocal(appointment.startsAt),
+      endsAt: toDateTimeLocal(appointment.endsAt),
+      notes: appointment.notes || "",
+      editingId: appointment._id,
+    });
+    setShowForm(true);
+  };
+
+  const goToAttend = (appointment) => {
+    navigate("/encounters", {
+      state: {
+        openEncounterForm: true,
+        appointmentId: appointment._id,
+      },
+    });
+  };
+
+  const handleAppointmentClick = (appointment) => {
+    const action = window.prompt(
+      "Digite: 1 para editar agendamento, 2 para atender paciente",
+      "1"
+    );
+
+    if (action === "2") {
+      goToAttend(appointment);
+    } else if (action === "1") {
+      openEditForm(appointment);
+    }
+  };
+
   const goToPatientCreate = () => {
     const typed = form.patientSearch.trim();
     navigate("/patients", {
@@ -167,14 +203,20 @@ export function AppointmentsPage() {
         throw new Error("Selecione um paciente ou clique para cadastrar.");
       }
 
-      await api.post("/appointments", {
+      const payload = {
         patient: form.patientId,
         location: form.location,
         procedureType: form.procedureType,
         startsAt: new Date(form.startsAt).toISOString(),
         endsAt: new Date(form.endsAt).toISOString(),
         notes: form.notes,
-      });
+      };
+
+      if (form.editingId) {
+        await api.put(`/appointments/${form.editingId}`, payload);
+      } else {
+        await api.post("/appointments", payload);
+      }
 
       setShowForm(false);
       setForm(emptyForm);
@@ -220,7 +262,7 @@ export function AppointmentsPage() {
 
       {showForm ? (
         <form className="card form-grid" onSubmit={submit}>
-          <h3>Novo agendamento</h3>
+          <h3>{form.editingId ? "Editar agendamento" : "Novo agendamento"}</h3>
 
           <label className="autocomplete-wrap">
             Paciente
@@ -361,7 +403,12 @@ export function AppointmentsPage() {
                 return (
                   <div key={`${key}-cell`} className="week-grid-cell">
                     {items.map((item) => (
-                      <article key={item._id} className="week-event">
+                      <article
+                        key={item._id}
+                        className="week-event clickable"
+                        onClick={() => handleAppointmentClick(item)}
+                        title="Clique para editar ou atender"
+                      >
                         <strong>{item.patient?.fullName}</strong>
                         <span>{item.procedureType?.name}</span>
                         <span>{item.location?.name}</span>

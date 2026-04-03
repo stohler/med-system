@@ -22,15 +22,15 @@ a {
 
 .side-menu-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
 }
 
-.right-menu {
+.left-menu {
   position: sticky;
   top: 0;
   min-height: 100vh;
-  border-left: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
   background: #fff;
   padding: 12px;
   display: grid;
@@ -39,11 +39,11 @@ a {
   transition: width 0.2s ease;
 }
 
-.right-menu.collapsed {
+.left-menu.collapsed {
   width: 74px;
 }
 
-.right-menu.expanded {
+.left-menu.expanded {
   width: 240px;
 }
 
@@ -53,7 +53,7 @@ a {
   border: 1px solid #cbd5e1;
 }
 
-.right-menu-header p {
+.left-menu-header p {
   margin: 6px 0 0;
   font-size: 13px;
   color: #475569;
@@ -177,6 +177,15 @@ button {
   border: 1px solid #2563eb;
 }
 
+.link-button {
+  background: transparent;
+  color: #1d4ed8;
+  border: 0;
+  padding: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .error {
   color: #b91c1c;
   margin: 0;
@@ -213,6 +222,7 @@ button {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .qr {
@@ -284,6 +294,10 @@ button {
   font-size: 12px;
 }
 
+.week-event.clickable {
+  cursor: pointer;
+}
+
 .autocomplete-wrap {
   position: relative;
 }
@@ -340,10 +354,10 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .right-menu {
+  .left-menu {
     position: static;
     min-height: auto;
-    border-left: 0;
+    border-right: 0;
     border-bottom: 1px solid #e2e8f0;
     width: 100% !important;
   }

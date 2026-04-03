@@ -17,10 +17,8 @@ export function Layout({ children }) {
 
   return (
     <div className="app-shell side-menu-layout">
-      <main className="page">{children}</main>
-
-      <aside className={`right-menu ${collapsed ? "collapsed" : "expanded"}`}>
-        <div className="right-menu-header">
+      <aside className={`left-menu ${collapsed ? "collapsed" : "expanded"}`}>
+        <div className="left-menu-header">
           <button
             type="button"
             className="menu-toggle"
@@ -58,6 +56,8 @@ export function Layout({ children }) {
           {!collapsed ? <span>Sair</span> : null}
         </button>
       </aside>
+
+      <main className="page">{children}</main>
     </div>
   );
 }

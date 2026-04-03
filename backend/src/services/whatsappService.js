@@ -52,7 +52,16 @@ async function initWhatsApp() {
       clientId: "clinic-system",
       dataPath: env.whatsappSessionPath,
     }),
-    puppeteer: { args: ["--no-sandbox", "--disable-setuid-sandbox"] },
+    puppeteer: {
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--single-process",
+        "--disable-gpu",
+      ],
+      headless: true,
+    },
   });
 
   client.on("qr", async (qr) => {

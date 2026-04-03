@@ -4,6 +4,7 @@ import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { PatientsPage } from "./pages/PatientsPage";
+import { PatientDetailPage } from "./pages/PatientDetailPage";
 import { AppointmentsPage } from "./pages/AppointmentsPage";
 import { EncountersPage } from "./pages/EncountersPage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -24,6 +25,7 @@ function HomeRoutes() {
               <Routes>
                 <Route path="/" element={<AppointmentsPage />} />
                 <Route path="/patients" element={<PatientsPage />} />
+                <Route path="/patients/:id" element={<PatientDetailPage />} />
                 <Route path="/appointments" element={<AppointmentsPage />} />
                 <Route path="/encounters" element={<EncountersPage />} />
                 <Route path="/reports" element={<ReportsPage />} />

@@ -1,6 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 
+const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+function centsToBrl(cents) {
+  return BRL.format((Number(cents || 0) || 0) / 100);
+}
+
+function parseBrlToCents(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  return Number(digits || 0);
+}
+
+function formatBrlInputFromCents(cents) {
+  return centsToBrl(cents).replace(/^R\$\s?/, "R$ ");
+}
+
 const emptyLocation = {
   name: "",
   addressLine1: "",
@@ -133,7 +148,7 @@ export function SettingsPage() {
   };
 
   const updateLocationPrice = (locationId, value) => {
-    const priceCents = Number(value || 0);
+    const priceCents = parseBrlToCents(value);
     setProcedureForm((prev) => {
       const remaining = prev.pricesByLocation.filter((entry) => entry.location !== locationId);
       return {
@@ -191,12 +206,15 @@ export function SettingsPage() {
               <input value={locationForm.zipCode} onChange={(e) => setLocationForm((p) => ({ ...p, zipCode: e.target.value }))} required />
             </label>
             <label>
-              Valor base consulta (centavos)
+              Valor base consulta
               <input
-                type="number"
-                min="0"
-                value={locationForm.consultationPriceCents}
-                onChange={(e) => setLocationForm((p) => ({ ...p, consultationPriceCents: e.target.value }))}
+                value={formatBrlInputFromCents(locationForm.consultationPriceCents)}
+                onChange={(e) =>
+                  setLocationForm((p) => ({
+                    ...p,
+                    consultationPriceCents: parseBrlToCents(e.target.value),
+                  }))
+                }
                 required
               />
             </label>
@@ -226,7 +244,7 @@ export function SettingsPage() {
                   <td>{location.name}</td>
                   <td>{location.addressLine1}</td>
                   <td>{location.city}/{location.state}</td>
-                  <td>R$ {(location.consultationPriceCents / 100).toFixed(2)}</td>
+                  <td>{centsToBrl(location.consultationPriceCents)}</td>
                   <td>
                     <button type="button" className="btn-ghost" onClick={() => startEditLocation(location)}>
                       Editar
@@ -269,8 +287,17 @@ export function SettingsPage() {
               <input type="number" min="10" value={procedureForm.defaultDurationMinutes} onChange={(e) => setProcedureForm((p) => ({ ...p, defaultDurationMinutes: e.target.value }))} required />
             </label>
             <label>
-              Valor padrao (centavos)
-              <input type="number" min="0" value={procedureForm.defaultPriceCents} onChange={(e) => setProcedureForm((p) => ({ ...p, defaultPriceCents: e.target.value }))} required />
+              Valor padrao
+              <input
+                value={formatBrlInputFromCents(procedureForm.defaultPriceCents)}
+                onChange={(e) =>
+                  setProcedureForm((p) => ({
+                    ...p,
+                    defaultPriceCents: parseBrlToCents(e.target.value),
+                  }))
+                }
+                required
+              />
             </label>
 
             <div className="card-mini">
@@ -279,9 +306,7 @@ export function SettingsPage() {
                 <label key={location._id}>
                   {location.name}
                   <input
-                    type="number"
-                    min="0"
-                    value={price}
+                    value={formatBrlInputFromCents(price)}
                     onChange={(e) => updateLocationPrice(location._id, e.target.value)}
                   />
                 </label>
@@ -312,7 +337,7 @@ export function SettingsPage() {
                 <tr key={procedure._id}>
                   <td>{procedure.name}</td>
                   <td>{procedure.defaultDurationMinutes} min</td>
-                  <td>R$ {(procedure.defaultPriceCents / 100).toFixed(2)}</td>
+                  <td>{centsToBrl(procedure.defaultPriceCents)}</td>
                   <td>
                     <button type="button" className="btn-ghost" onClick={() => startEditProcedure(procedure)}>
                       Editar
