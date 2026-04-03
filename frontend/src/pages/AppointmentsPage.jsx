@@ -48,6 +48,7 @@ export function AppointmentsPage() {
   const [weekStart, setWeekStart] = useState(dayjs().startOf("isoWeek"));
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [selectedAppointment, setSelectedAppointment] = useState(null);
 
   const navigate = useNavigate();
   const locationRouter = useLocation();
@@ -151,16 +152,7 @@ export function AppointmentsPage() {
   };
 
   const handleAppointmentClick = (appointment) => {
-    const action = window.prompt(
-      "Digite: 1 para editar agendamento, 2 para atender paciente",
-      "1"
-    );
-
-    if (action === "2") {
-      goToAttend(appointment);
-    } else if (action === "1") {
-      openEditForm(appointment);
-    }
+    setSelectedAppointment(appointment);
   };
 
   const goToPatientCreate = () => {
@@ -421,6 +413,46 @@ export function AppointmentsPage() {
           ))}
         </div>
       </div>
+
+      {selectedAppointment ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal-card">
+            <h3>Acoes do agendamento</h3>
+            <p>
+              {selectedAppointment.patient?.fullName} -{" "}
+              {dayjs(selectedAppointment.startsAt).format("DD/MM/YYYY HH:mm")}
+            </p>
+            <div className="inline-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  openEditForm(selectedAppointment);
+                  setSelectedAppointment(null);
+                }}
+              >
+                Editar agendamento
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => {
+                  goToAttend(selectedAppointment);
+                  setSelectedAppointment(null);
+                }}
+              >
+                Atender paciente
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setSelectedAppointment(null)}
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

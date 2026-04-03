@@ -1,9 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 
 const PAGE_SIZE = 10;
+
+const encounterInitial = {
+  appointment: "",
+  historyOfCurrentIllness: "",
+  comorbidities: "",
+  comorbiditiesDenied: false,
+  allergies: "",
+  allergiesDenied: false,
+  medicationsInUse: "",
+  medicationsDenied: false,
+  physicalExam: "",
+  diagnosticHypothesis: "",
+  conduct: "",
+};
 
 export function EncountersPage() {
   const [appointments, setAppointments] = useState([]);
@@ -13,17 +27,11 @@ export function EncountersPage() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [showExamSection, setShowExamSection] = useState(false);
 
-  const [encounterForm, setEncounterForm] = useState({
-    appointment: "",
-    anamnesis: "",
-    evolution: "",
-    diagnosis: "",
-  });
-
+  const [encounterForm, setEncounterForm] = useState(encounterInitial);
   const [examForm, setExamForm] = useState({ encounterId: "", examType: "", findings: "" });
   const [surgeryForm, setSurgeryForm] = useState({
-    encounterId: "",
     surgeryProcedureType: "",
     location: "",
     plannedDate: "",
@@ -31,6 +39,17 @@ export function EncountersPage() {
   });
 
   const locationRouter = useLocation();
+  const navigate = useNavigate();
+
+  const selectedAppointment = useMemo(
+    () => appointments.find((item) => item._id === encounterForm.appointment) || null,
+    [appointments, encounterForm.appointment]
+  );
+
+  const selectedEncounterForSurgery = useMemo(
+    () => encounters.find((item) => item._id === examForm.encounterId) || null,
+    [encounters, examForm.encounterId]
+  );
 
   const load = async () => {
     const [appointmentsRes, encountersRes, locationsRes, proceduresRes] = await Promise.all([
@@ -62,9 +81,9 @@ export function EncountersPage() {
 
     return encounters.filter((item) => {
       const patient = item.patient?.fullName || "";
-      const diagnosis = item.diagnosis || "";
-      const evolution = item.evolution || "";
-      return `${patient} ${diagnosis} ${evolution}`.toLowerCase().includes(q);
+      const diagnosis = item.diagnosticHypothesis || item.diagnosis || "";
+      const conduct = item.conduct || "";
+      return `${patient} ${diagnosis} ${conduct}`.toLowerCase().includes(q);
     });
   }, [encounters, search]);
 
@@ -80,7 +99,7 @@ export function EncountersPage() {
     setError("");
     try {
       await api.post("/encounters", encounterForm);
-      setEncounterForm({ appointment: "", anamnesis: "", evolution: "", diagnosis: "" });
+      setEncounterForm(encounterInitial);
       await load();
     } catch (err) {
       setError(err?.response?.data?.message || "Nao foi possivel salvar evolucao");
@@ -96,6 +115,7 @@ export function EncountersPage() {
         findings: examForm.findings,
       });
       setExamForm({ encounterId: "", examType: "", findings: "" });
+      setShowExamSection(false);
       await load();
     } catch (err) {
       setError(err?.response?.data?.message || "Falha ao inserir exame");
@@ -106,14 +126,16 @@ export function EncountersPage() {
     event.preventDefault();
     setError("");
     try {
-      await api.post(`/encounters/${surgeryForm.encounterId}/schedule-surgery`, {
+      if (!examForm.encounterId) {
+        throw new Error("Selecione uma evolucao para programar cirurgia.");
+      }
+      await api.post(`/encounters/${examForm.encounterId}/schedule-surgery`, {
         surgeryProcedureType: surgeryForm.surgeryProcedureType,
         location: surgeryForm.location,
         plannedDate: new Date(surgeryForm.plannedDate).toISOString(),
         notes: surgeryForm.notes,
       });
       setSurgeryForm({
-        encounterId: "",
         surgeryProcedureType: "",
         location: "",
         plannedDate: "",
@@ -122,13 +144,27 @@ export function EncountersPage() {
       await load();
       alert("Cirurgia programada e inserida na agenda.");
     } catch (err) {
-      setError(err?.response?.data?.message || "Falha ao programar cirurgia");
+      setError(err?.response?.data?.message || err.message || "Falha ao programar cirurgia");
     }
   };
 
   return (
     <section className="stack">
-      <h2>Atendimento do paciente</h2>
+      <div className="table-header">
+        <h2>Atendimento do paciente</h2>
+        <button type="button" className="btn-ghost" onClick={() => navigate(-1)}>
+          Voltar
+        </button>
+      </div>
+
+      {selectedAppointment ? (
+        <div className="card patient-header">
+          <strong>{selectedAppointment.patient?.fullName}</strong>
+          <span>Nascimento: {selectedAppointment.patient?.birthDate ? dayjs(selectedAppointment.patient.birthDate).format("DD/MM/YYYY") : "-"}</span>
+          <span>Procedimento: {selectedAppointment.procedureType?.name || "-"}</span>
+          <span>Local: {selectedAppointment.location?.name || "-"}</span>
+        </div>
+      ) : null}
 
       <form className="card form-grid" onSubmit={createEncounter}>
         <h3>Nova evolucao</h3>
@@ -147,66 +183,157 @@ export function EncountersPage() {
             ))}
           </select>
         </label>
+
         <label>
-          Anamnese
-          <textarea value={encounterForm.anamnesis} onChange={(e) => setEncounterForm((p) => ({ ...p, anamnesis: e.target.value }))} />
+          Historia da doenca atual
+          <textarea
+            value={encounterForm.historyOfCurrentIllness}
+            onChange={(e) => setEncounterForm((p) => ({ ...p, historyOfCurrentIllness: e.target.value }))}
+          />
         </label>
+
+        <div className="grid-cards">
+          <label>
+            <span className="inline-actions"><strong>Comorbidades</strong>
+              <label className="inline-check">
+                <input
+                  type="checkbox"
+                  checked={encounterForm.comorbiditiesDenied}
+                  onChange={(e) => setEncounterForm((p) => ({ ...p, comorbiditiesDenied: e.target.checked }))}
+                />
+                Nega
+              </label>
+            </span>
+            <textarea
+              value={encounterForm.comorbidities}
+              onChange={(e) => setEncounterForm((p) => ({ ...p, comorbidities: e.target.value }))}
+              disabled={encounterForm.comorbiditiesDenied}
+            />
+          </label>
+
+          <label>
+            <span className="inline-actions"><strong>Alergias</strong>
+              <label className="inline-check">
+                <input
+                  type="checkbox"
+                  checked={encounterForm.allergiesDenied}
+                  onChange={(e) => setEncounterForm((p) => ({ ...p, allergiesDenied: e.target.checked }))}
+                />
+                Nega
+              </label>
+            </span>
+            <textarea
+              value={encounterForm.allergies}
+              onChange={(e) => setEncounterForm((p) => ({ ...p, allergies: e.target.value }))}
+              disabled={encounterForm.allergiesDenied}
+            />
+          </label>
+
+          <label>
+            <span className="inline-actions"><strong>Medicamentos em uso</strong>
+              <label className="inline-check">
+                <input
+                  type="checkbox"
+                  checked={encounterForm.medicationsDenied}
+                  onChange={(e) => setEncounterForm((p) => ({ ...p, medicationsDenied: e.target.checked }))}
+                />
+                Nega
+              </label>
+            </span>
+            <textarea
+              value={encounterForm.medicationsInUse}
+              onChange={(e) => setEncounterForm((p) => ({ ...p, medicationsInUse: e.target.value }))}
+              disabled={encounterForm.medicationsDenied}
+            />
+          </label>
+        </div>
+
         <label>
-          Evolucao
-          <textarea value={encounterForm.evolution} onChange={(e) => setEncounterForm((p) => ({ ...p, evolution: e.target.value }))} />
+          Exame fisico
+          <textarea
+            value={encounterForm.physicalExam}
+            onChange={(e) => setEncounterForm((p) => ({ ...p, physicalExam: e.target.value }))}
+          />
         </label>
+
         <label>
-          Diagnostico
-          <textarea value={encounterForm.diagnosis} onChange={(e) => setEncounterForm((p) => ({ ...p, diagnosis: e.target.value }))} />
+          Hipotese diagnostica
+          <textarea
+            value={encounterForm.diagnosticHypothesis}
+            onChange={(e) => setEncounterForm((p) => ({ ...p, diagnosticHypothesis: e.target.value }))}
+          />
         </label>
+
+        <label>
+          Conduta
+          <textarea
+            value={encounterForm.conduct}
+            onChange={(e) => setEncounterForm((p) => ({ ...p, conduct: e.target.value }))}
+          />
+        </label>
+
         <button type="submit">Salvar evolucao</button>
       </form>
 
-      <form className="card form-grid" onSubmit={addExam}>
-        <h3>Inserir resultado de exame</h3>
-        <label>
-          Evolucao
-          <select
-            value={examForm.encounterId}
-            onChange={(e) => setExamForm((p) => ({ ...p, encounterId: e.target.value }))}
-            required
-          >
-            <option value="">Selecione</option>
-            {encounters.map((item) => (
-              <option key={item._id} value={item._id}>
-                {item.patient?.fullName || item.patient}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Tipo de exame
-          <input value={examForm.examType} onChange={(e) => setExamForm((p) => ({ ...p, examType: e.target.value }))} required />
-        </label>
-        <label>
-          Resultado
-          <textarea value={examForm.findings} onChange={(e) => setExamForm((p) => ({ ...p, findings: e.target.value }))} required />
-        </label>
-        <button type="submit">Salvar exame</button>
-      </form>
+      <div className="inline-actions">
+        <button type="button" className="btn-ghost" onClick={() => setShowExamSection((prev) => !prev)}>
+          {showExamSection ? "Ocultar resultado de exames" : "Adicionar resultado de exames"}
+        </button>
+      </div>
+
+      {showExamSection ? (
+        <form className="card form-grid" onSubmit={addExam}>
+          <h3>Inserir resultado de exame (opcional)</h3>
+          <label>
+            Evolucao
+            <select
+              value={examForm.encounterId}
+              onChange={(e) => setExamForm((p) => ({ ...p, encounterId: e.target.value }))}
+              required
+            >
+              <option value="">Selecione</option>
+              {encounters.map((item) => (
+                <option key={item._id} value={item._id}>
+                  {item.patient?.fullName || item.patient}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Tipo de exame
+            <input value={examForm.examType} onChange={(e) => setExamForm((p) => ({ ...p, examType: e.target.value }))} required />
+          </label>
+          <label>
+            Resultado
+            <textarea value={examForm.findings} onChange={(e) => setExamForm((p) => ({ ...p, findings: e.target.value }))} required />
+          </label>
+          <button type="submit">Salvar exame</button>
+        </form>
+      ) : null}
 
       <form className="card form-grid" onSubmit={scheduleSurgery}>
         <h3>Programar cirurgia</h3>
         <label>
-          Evolucao
+          Paciente
           <select
-            value={surgeryForm.encounterId}
-            onChange={(e) => setSurgeryForm((p) => ({ ...p, encounterId: e.target.value }))}
+            value={encounterForm.appointment}
+            onChange={(e) => setEncounterForm((p) => ({ ...p, appointment: e.target.value }))}
             required
           >
             <option value="">Selecione</option>
-            {encounters.map((item) => (
-              <option key={item._id} value={item._id}>
-                {item.patient?.fullName || item.patient}
+            {appointments.map((a) => (
+              <option key={a._id} value={a._id}>
+                {a.patient?.fullName} - {a.procedureType?.name}
               </option>
             ))}
           </select>
         </label>
+
+        {selectedAppointment?.patient ? (
+          <div className="card-mini">
+            <strong>Paciente:</strong> {selectedAppointment.patient.fullName || "-"}
+          </div>
+        ) : null}
 
         <label>
           Cirurgia
@@ -278,8 +405,8 @@ export function EncountersPage() {
             <thead>
               <tr>
                 <th>Paciente</th>
-                <th>Diagnostico</th>
-                <th>Evolucao</th>
+                <th>Hipotese</th>
+                <th>Conduta</th>
                 <th>Data</th>
                 <th>Acoes</th>
               </tr>
@@ -288,8 +415,8 @@ export function EncountersPage() {
               {pagedEncounters.map((item) => (
                 <tr key={item._id}>
                   <td>{item.patient?.fullName || item.patient}</td>
-                  <td>{item.diagnosis || "-"}</td>
-                  <td>{item.evolution || "-"}</td>
+                  <td>{item.diagnosticHypothesis || item.diagnosis || "-"}</td>
+                  <td>{item.conduct || "-"}</td>
                   <td>{dayjs(item.createdAt).format("DD/MM/YYYY HH:mm")}</td>
                   <td>
                     <button

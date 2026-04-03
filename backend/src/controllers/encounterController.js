@@ -16,9 +16,16 @@ const { sendMail } = require("../services/emailService");
 
 const encounterSchema = z.object({
   appointment: z.string().min(1),
-  anamnesis: z.string().optional().default(""),
-  evolution: z.string().optional().default(""),
-  diagnosis: z.string().optional().default(""),
+  historyOfPresentIllness: z.string().optional().default(""),
+  comorbidities: z.string().optional().default(""),
+  denyComorbidities: z.boolean().optional().default(false),
+  allergies: z.string().optional().default(""),
+  denyAllergies: z.boolean().optional().default(false),
+  currentMedications: z.string().optional().default(""),
+  denyCurrentMedications: z.boolean().optional().default(false),
+  physicalExam: z.string().optional().default(""),
+  diagnosticHypothesis: z.string().optional().default(""),
+  conduct: z.string().optional().default(""),
 });
 
 const examSchema = z.object({
@@ -64,9 +71,18 @@ const createEncounter = asyncHandler(async (req, res) => {
     appointment: appointment._id,
     patient: appointment.patient,
     clinician: req.userId,
-    anamnesis: payload.anamnesis,
-    evolution: payload.evolution,
-    diagnosis: payload.diagnosis,
+    historyOfPresentIllness: payload.historyOfPresentIllness,
+    comorbidities: payload.denyComorbidities ? "" : payload.comorbidities,
+    denyComorbidities: payload.denyComorbidities,
+    allergies: payload.denyAllergies ? "" : payload.allergies,
+    denyAllergies: payload.denyAllergies,
+    currentMedications: payload.denyCurrentMedications
+      ? ""
+      : payload.currentMedications,
+    denyCurrentMedications: payload.denyCurrentMedications,
+    physicalExam: payload.physicalExam,
+    diagnosticHypothesis: payload.diagnosticHypothesis,
+    conduct: payload.conduct,
   });
 
   appointment.status = "completed";

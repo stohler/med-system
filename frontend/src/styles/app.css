@@ -225,6 +225,14 @@ button {
   align-items: center;
 }
 
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  font-size: 13px;
+}
+
 .qr {
   width: min(100%, 320px);
   border-radius: 12px;
@@ -298,6 +306,10 @@ button {
   cursor: pointer;
 }
 
+.week-event.clickable:hover {
+  background: #dbeafe;
+}
+
 .autocomplete-wrap {
   position: relative;
 }
@@ -332,6 +344,37 @@ button {
   gap: 12px;
 }
 
+.patient-header {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  display: grid;
+  place-items: center;
+  z-index: 60;
+}
+
+.modal-card {
+  width: min(560px, calc(100vw - 40px));
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .table-wrap {
   overflow: auto;
 }
@@ -364,5 +407,9 @@ button {
 
   .week-days-actions {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .patient-header {
+    grid-template-columns: 1fr 1fr;
   }
 }

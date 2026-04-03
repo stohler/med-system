@@ -67,7 +67,7 @@ jobs:
           NODE_ENV: "production"
           WHATSAPP_MODE: "web"
           WHATSAPP_ENABLED: "true"
-          WHATSAPP_WEB_ENABLED: "false"
+          WHATSAPP_WEB_ENABLED: "true"
           SMTP_HOST: "smtp.gmail.com"
           SMTP_PORT: "587"
           SMTP_SECURE: "false"
