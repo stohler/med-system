@@ -2,6 +2,7 @@ const qrcode = require("qrcode");
 const axios = require("axios");
 const fs = require("fs");
 const path = require("path");
+const { execFile } = require("child_process");
 const { env } = require("../config/env");
 
 let ClientLib = null;
@@ -64,6 +65,20 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function execFileAsync(command, args, options = {}) {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, options, (error, stdout, stderr) => {
+      if (error) {
+        error.stdout = stdout;
+        error.stderr = stderr;
+        reject(error);
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
 function getChromiumPath() {
   const candidateFromEnv = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_BIN;
   const candidates = [
@@ -105,6 +120,46 @@ function getSessionTargets() {
   return unique.map(resolveSessionPath).filter(Boolean);
 }
 
+function getSessionLockTargets() {
+  const baseSessionPath = resolveSessionPath(env.whatsappSessionPath || ".wwebjs_auth");
+  const profilePath = path.join(baseSessionPath, "session-clinic-system");
+  return [
+    path.join(profilePath, "SingletonLock"),
+    path.join(profilePath, "SingletonSocket"),
+    path.join(profilePath, "SingletonCookie"),
+    path.join(baseSessionPath, "SingletonLock"),
+    path.join(baseSessionPath, "SingletonSocket"),
+    path.join(baseSessionPath, "SingletonCookie"),
+  ];
+}
+
+async function cleanupSessionLocks() {
+  const removed = [];
+  for (const lockPath of getSessionLockTargets()) {
+    try {
+      await fs.promises.rm(lockPath, { force: true });
+      removed.push(lockPath);
+    } catch (_error) {
+      // ignore lock cleanup errors
+    }
+  }
+  if (removed.length > 0) {
+    logWhatsapp("warn", "session_locks_removed", { count: removed.length });
+  }
+}
+
+async function killOrphanChromiumProcesses() {
+  try {
+    await execFileAsync("pkill", ["-f", "session-clinic-system"], { timeout: 4000 });
+    logWhatsapp("warn", "orphan_chromium_killed", { matcher: "session-clinic-system" });
+  } catch (error) {
+    // pkill exits with code 1 when no process matches; this is expected.
+    if (error?.code !== 1) {
+      logWhatsapp("warn", "orphan_chromium_kill_error", { message: error?.message });
+    }
+  }
+}
+
 async function destroyClient() {
   if (!client) return;
   logWhatsapp("info", "destroy_client_start");
@@ -120,6 +175,8 @@ async function destroyClient() {
     initPromise = null;
     initStartedAt = null;
     markState("idle");
+    await cleanupSessionLocks();
+    await killOrphanChromiumProcesses();
   }
 }
 
@@ -216,6 +273,9 @@ async function initWhatsApp() {
         attempt: profileIndex + 1,
         profile: profile.name,
       });
+
+      await cleanupSessionLocks();
+      await killOrphanChromiumProcesses();
 
       client = new ClientLib({
       authStrategy: new LocalAuthLib({
@@ -323,7 +383,15 @@ async function initWhatsApp() {
         await destroyClient();
 
         const canRetry = profileIndex < launchProfiles.length - 1;
-        if (canRetry && /timeout|Target closed|browser has disconnected|Protocol error/i.test(message)) {
+        const isRetryable =
+          /timeout|Target closed|browser has disconnected|Protocol error|browser is already running|userDataDir/i.test(
+            message
+          );
+        if (isRetryable) {
+          await cleanupSessionLocks();
+          await killOrphanChromiumProcesses();
+        }
+        if (canRetry && isRetryable) {
           logWhatsapp("warn", "init_retry_next_profile", {
             nextProfile: launchProfiles[profileIndex + 1].name,
           });
@@ -369,6 +437,8 @@ async function restartWhatsApp() {
   logWhatsapp("info", "restart_requested");
   try {
     await destroyClient();
+    await cleanupSessionLocks();
+    await killOrphanChromiumProcesses();
     lastQrDataUrl = null;
     lastError = "";
     markState("restarting");
@@ -388,6 +458,8 @@ async function restartWhatsApp() {
 async function resetWhatsAppSession() {
   logWhatsapp("warn", "session_reset_requested", { memory: memorySnapshot() });
   await destroyClient();
+  await cleanupSessionLocks();
+  await killOrphanChromiumProcesses();
 
   const removedPaths = [];
   const warnings = [];
