@@ -45,6 +45,22 @@ const whatsappQr = asyncHandler(async (_req, res) => {
           status,
         });
       }
+
+      const inProgressStates = new Set([
+        "initializing",
+        "restarting",
+        "loading",
+        "authenticated",
+        "session_reset",
+      ]);
+      if (status.initializing || inProgressStates.has(status.connectionState)) {
+        return res.json({
+          qrCodeDataUrl: null,
+          reason: "WhatsApp Web esta inicializando. Aguarde alguns segundos e tente novamente.",
+          status,
+        });
+      }
+
       let reason = "QR indisponivel no momento. Aguarde alguns segundos e tente novamente.";
       if (status.mode !== "web") {
         reason = "WHATSAPP_MODE diferente de web. Ajuste para web para usar QR Code.";
@@ -124,19 +140,14 @@ const whatsappResetSession = asyncHandler(async (_req, res) => {
   // eslint-disable-next-line no-console
   console.log("[whatsapp] solicitacao de reset de sessao recebida");
   const result = await resetWhatsAppSession();
-  if (!result.ok) {
-    return res.status(503).json({
-      reset: false,
-      message: `Falha ao resetar sessao: ${result.message}`,
-      status: result.status || getWhatsappStatus(),
-    });
-  }
+  initWhatsApp().catch(() => null);
   return res.json({
     reset: true,
     message:
       "Sessao WhatsApp resetada. Gere um novo QR Code para conectar novamente.",
     status: result.status || getWhatsappStatus(),
     removedPaths: result.removedPaths || [],
+    warnings: result.warnings || [],
   });
 });
 

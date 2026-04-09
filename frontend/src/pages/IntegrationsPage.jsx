@@ -42,6 +42,9 @@ export function IntegrationsPage() {
         ...(prev || {}),
         ...(data.status || {}),
       }));
+      if (!data.qrCodeDataUrl && data.reason) {
+        setSuccess(data.reason);
+      }
     } catch (err) {
       const reason = err?.response?.data?.reason;
       setError(reason || err?.response?.data?.message || "Falha ao gerar QR Code");
@@ -89,6 +92,9 @@ export function IntegrationsPage() {
       );
       setWhatsapp(data.status || null);
       setQr("");
+      if (data.warnings?.length) {
+        setSuccess(`${data.message} Avisos: ${data.warnings.length}.`);
+      }
     } catch (err) {
       setError(err?.response?.data?.message || "Falha ao resetar sessao WhatsApp");
     }
