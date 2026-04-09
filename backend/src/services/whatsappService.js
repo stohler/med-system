@@ -25,7 +25,7 @@ let connectionState = "idle";
 let lastStateAt = null;
 let initPromise = null;
 let initStartedAt = null;
-const initTimeoutMs = Number(process.env.WHATSAPP_INIT_TIMEOUT_MS || 90000);
+const initTimeoutMs = Number(process.env.WHATSAPP_INIT_TIMEOUT_MS || 300000);
 
 function logWhatsapp(level, event, metadata = {}) {
   const payload = {
@@ -87,6 +87,7 @@ function getWhatsappStatus() {
     lastError: lastError || null,
     connectionState,
     lastStateAt,
+    cooldownUntil: forceUnavailableUntil ? new Date(forceUnavailableUntil).toISOString() : null,
   };
 }
 
@@ -166,14 +167,9 @@ async function initWhatsApp() {
   logWhatsapp("info", "init_start", { executablePath, initTimeoutMs, memory: memorySnapshot() });
 
   initPromise = (async () => {
-    client = new ClientLib({
-      authStrategy: new LocalAuthLib({
-        clientId: "clinic-system",
-        dataPath: env.whatsappSessionPath,
-      }),
-      takeoverOnConflict: true,
-      takeoverTimeoutMs: 0,
-      puppeteer: {
+    const launchProfiles = [
+      {
+        name: "default",
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -189,6 +185,44 @@ async function initWhatsApp() {
           "--disable-features=site-per-process,Translate,BackForwardCache,AcceptCHFrame,MediaRouter",
           "--window-size=1200,800",
         ],
+      },
+      {
+        name: "fallback-single-process",
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+          "--no-zygote",
+          "--single-process",
+          "--disable-extensions",
+          "--disable-background-networking",
+          "--disable-default-apps",
+          "--disable-sync",
+          "--disable-translate",
+          "--mute-audio",
+          "--window-size=1200,800",
+        ],
+      },
+    ];
+
+    for (let profileIndex = 0; profileIndex < launchProfiles.length; profileIndex += 1) {
+      const profile = launchProfiles[profileIndex];
+      markState(profileIndex === 0 ? "initializing" : "retrying_init");
+      logWhatsapp("info", "init_attempt", {
+        attempt: profileIndex + 1,
+        profile: profile.name,
+      });
+
+      client = new ClientLib({
+      authStrategy: new LocalAuthLib({
+        clientId: "clinic-system",
+        dataPath: env.whatsappSessionPath,
+      }),
+      takeoverOnConflict: true,
+      takeoverTimeoutMs: 0,
+      puppeteer: {
+        args: profile.args,
         headless: true,
         executablePath,
       },
@@ -246,41 +280,63 @@ async function initWhatsApp() {
       }
     });
 
-    let timeoutHandle = null;
-    try {
-      await Promise.race([
-        client.initialize(),
-        new Promise((_, reject) => {
-          timeoutHandle = setTimeout(() => {
-            reject(new Error("Timeout ao iniciar WhatsApp Web. Tente reiniciar a sessao."));
-          }, initTimeoutMs);
-        }),
-      ]);
-      logWhatsapp("info", "init_success", { memory: memorySnapshot() });
-    } catch (error) {
-      const message = error?.message || "Falha ao iniciar cliente WhatsApp.";
-      lastError = message;
-      if (/memory|ENOMEM|Target closed|browser has disconnected/i.test(message)) {
-        forceWebUnavailable = true;
-        lastError =
-          "Memoria insuficiente para iniciar WhatsApp Web. Aumente memoria do Cloud Run para 2Gi ou use modo business.";
-        markState("memory_error");
-      } else if (/timeout/i.test(message)) {
-        markState("init_timeout");
-      } else {
-        markState("init_error");
+      let timeoutHandle = null;
+      try {
+        await Promise.race([
+          client.initialize(),
+          new Promise((_, reject) => {
+            timeoutHandle = setTimeout(() => {
+              reject(
+                new Error("Timeout ao iniciar WhatsApp Web. Tente reiniciar a sessao.")
+              );
+            }, initTimeoutMs);
+          }),
+        ]);
+        logWhatsapp("info", "init_success", {
+          memory: memorySnapshot(),
+          profile: profile.name,
+        });
+        return;
+      } catch (error) {
+        const message = error?.message || "Falha ao iniciar cliente WhatsApp.";
+        lastError = message;
+        if (/memory|ENOMEM|out of memory|Cannot allocate memory/i.test(message)) {
+          forceWebUnavailable = true;
+          lastError =
+            "Memoria insuficiente para iniciar WhatsApp Web. Aumente memoria do Cloud Run para 2Gi ou use modo business.";
+          markState("memory_error");
+        } else if (/timeout/i.test(message)) {
+          markState("init_timeout");
+        } else {
+          markState("init_error");
+        }
+        logWhatsapp("error", "init_error", {
+          message,
+          state: connectionState,
+          memory: memorySnapshot(),
+          profile: profile.name,
+        });
+        await destroyClient();
+
+        const canRetry = profileIndex < launchProfiles.length - 1;
+        if (canRetry && /timeout|Target closed|browser has disconnected|Protocol error/i.test(message)) {
+          logWhatsapp("warn", "init_retry_next_profile", {
+            nextProfile: launchProfiles[profileIndex + 1].name,
+          });
+          continue;
+        }
+      } finally {
+        if (timeoutHandle) {
+          clearTimeout(timeoutHandle);
+        }
       }
-      logWhatsapp("error", "init_error", { message, state: connectionState, memory: memorySnapshot() });
-      await destroyClient();
-    } finally {
-      if (timeoutHandle) {
-        clearTimeout(timeoutHandle);
-      }
+    }
+  })()
+    .finally(() => {
       initializing = false;
       initStartedAt = null;
       initPromise = null;
-    }
-  })();
+    });
 
   return initPromise;
 }
