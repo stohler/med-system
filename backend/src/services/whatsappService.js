@@ -21,6 +21,7 @@ let ready = false;
 let initializing = false;
 let lastError = "";
 let forceWebUnavailable = false;
+let forceUnavailableUntil = null;
 let connectionState = "idle";
 let lastStateAt = null;
 let initPromise = null;
@@ -144,6 +145,8 @@ async function initWhatsApp() {
   if (forceWebUnavailable) {
     lastError =
       "WhatsApp Web desabilitado neste ambiente por limite de memoria/estabilidade.";
+    forceUnavailableUntil =
+      forceUnavailableUntil || Date.now() + 5 * 60 * 1000;
     logWhatsapp("warn", "init_skipped_force_unavailable", { lastError });
     return;
   }
@@ -302,6 +305,7 @@ async function initWhatsApp() {
         lastError = message;
         if (/memory|ENOMEM|out of memory|Cannot allocate memory/i.test(message)) {
           forceWebUnavailable = true;
+          forceUnavailableUntil = Date.now() + 5 * 60 * 1000;
           lastError =
             "Memoria insuficiente para iniciar WhatsApp Web. Aumente memoria do Cloud Run para 2Gi ou use modo business.";
           markState("memory_error");
@@ -369,6 +373,7 @@ async function restartWhatsApp() {
     lastError = "";
     markState("restarting");
     forceWebUnavailable = false;
+    forceUnavailableUntil = null;
     await initWhatsApp();
   } catch (error) {
     lastError = error?.message || "Falha ao reiniciar cliente WhatsApp.";
@@ -406,6 +411,7 @@ async function resetWhatsAppSession() {
   initPromise = null;
   initStartedAt = null;
   forceWebUnavailable = false;
+  forceUnavailableUntil = null;
   lastError = "";
   markState("session_reset");
 
