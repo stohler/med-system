@@ -1,6 +1,7 @@
 const qrcode = require("qrcode");
 const axios = require("axios");
 const fs = require("fs");
+const path = require("path");
 const { env } = require("../config/env");
 
 let ClientLib = null;
@@ -87,6 +88,19 @@ function getWhatsappStatus() {
     connectionState,
     lastStateAt,
   };
+}
+
+function resolveSessionPath(targetPath) {
+  if (!targetPath) return null;
+  if (path.isAbsolute(targetPath)) return targetPath;
+  return path.resolve(process.cwd(), targetPath);
+}
+
+function getSessionTargets() {
+  const configured = env.whatsappSessionPath || ".wwebjs_auth";
+  const targets = [configured, ".wwebjs_cache"];
+  const unique = [...new Set(targets.filter(Boolean))];
+  return unique.map(resolveSessionPath).filter(Boolean);
 }
 
 async function destroyClient() {
@@ -310,6 +324,45 @@ async function restartWhatsApp() {
   return status;
 }
 
+async function resetWhatsAppSession() {
+  logWhatsapp("warn", "session_reset_requested", { memory: memorySnapshot() });
+  await destroyClient();
+
+  const removedPaths = [];
+  const warnings = [];
+  for (const target of getSessionTargets()) {
+    try {
+      await fs.promises.rm(target, { recursive: true, force: true });
+      removedPaths.push(target);
+      logWhatsapp("info", "session_path_removed", { target });
+    } catch (error) {
+      warnings.push({ target, message: error?.message || "erro ao remover caminho" });
+      logWhatsapp("warn", "session_path_remove_error", {
+        target,
+        message: error?.message,
+      });
+    }
+  }
+
+  lastQrDataUrl = null;
+  ready = false;
+  initializing = false;
+  initPromise = null;
+  initStartedAt = null;
+  forceWebUnavailable = false;
+  lastError = "";
+  markState("session_reset");
+
+  const status = getWhatsappStatus();
+  logWhatsapp("info", "session_reset_finished", {
+    removedCount: removedPaths.length,
+    warningsCount: warnings.length,
+    memory: memorySnapshot(),
+  });
+
+  return { status, removedPaths, warnings };
+}
+
 async function sendViaWhatsappBusiness({ phone, text }) {
   if (!env.whatsappBusinessToken || !env.whatsappPhoneNumberId) return false;
 
@@ -357,5 +410,6 @@ module.exports = {
   initWhatsApp,
   getWhatsappQrCode,
   restartWhatsApp,
+  resetWhatsAppSession,
   sendWhatsappNotification,
 };

@@ -78,6 +78,22 @@ export function IntegrationsPage() {
     }
   };
 
+  const resetWhatsAppSession = async () => {
+    setError("");
+    setSuccess("");
+    try {
+      const { data } = await api.post("/integrations/whatsapp/reset-session");
+      setSuccess(
+        data.message ||
+          "Sessao WhatsApp resetada. Gere um novo QR Code para reconectar."
+      );
+      setWhatsapp(data.status || null);
+      setQr("");
+    } catch (err) {
+      setError(err?.response?.data?.message || "Falha ao resetar sessao WhatsApp");
+    }
+  };
+
   useEffect(() => {
     loadWhatsappStatus().catch(() => null);
   }, []);
@@ -110,6 +126,7 @@ export function IntegrationsPage() {
           <button type="button" onClick={loadWhatsappStatus}>Atualizar status</button>
           <button type="button" onClick={loadWhatsappQr}>Gerar QR Code</button>
           <button type="button" className="btn-ghost" onClick={restartWhatsApp}>Reiniciar sessao</button>
+          <button type="button" className="btn-ghost" onClick={resetWhatsAppSession}>Resetar sessao (limpar dados)</button>
         </div>
         {whatsapp ? (
           <p>

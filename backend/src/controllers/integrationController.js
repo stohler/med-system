@@ -8,6 +8,7 @@ const {
   getWhatsappQrCode,
   initWhatsApp,
   restartWhatsApp,
+  resetWhatsAppSession,
   sendWhatsappNotification,
 } = require("../services/whatsappService");
 
@@ -119,6 +120,26 @@ const whatsappRestart = asyncHandler(async (_req, res) => {
   });
 });
 
+const whatsappResetSession = asyncHandler(async (_req, res) => {
+  // eslint-disable-next-line no-console
+  console.log("[whatsapp] solicitacao de reset de sessao recebida");
+  const result = await resetWhatsAppSession();
+  if (!result.ok) {
+    return res.status(503).json({
+      reset: false,
+      message: `Falha ao resetar sessao: ${result.message}`,
+      status: result.status || getWhatsappStatus(),
+    });
+  }
+  return res.json({
+    reset: true,
+    message:
+      "Sessao WhatsApp resetada. Gere um novo QR Code para conectar novamente.",
+    status: result.status || getWhatsappStatus(),
+    removedPaths: result.removedPaths || [],
+  });
+});
+
 module.exports = {
   googleAuthUrl,
   googleTokenExchange,
@@ -126,4 +147,5 @@ module.exports = {
   whatsappQr,
   whatsappTestMessage,
   whatsappRestart,
+  whatsappResetSession,
 };

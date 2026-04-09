@@ -7,6 +7,7 @@ const {
   whatsappQr,
   whatsappTestMessage,
   whatsappRestart,
+  whatsappResetSession,
 } = require("../controllers/integrationController");
 
 const router = Router();
@@ -18,5 +19,6 @@ router.get("/whatsapp/status", whatsappStatus);
 router.get("/whatsapp/qr", whatsappQr);
 router.post("/whatsapp/test-message", whatsappTestMessage);
 router.post("/whatsapp/restart", whatsappRestart);
+router.post("/whatsapp/reset-session", whatsappResetSession);
 
 module.exports = router;
