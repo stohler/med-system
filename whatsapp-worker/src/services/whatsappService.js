@@ -28,6 +28,12 @@ let lastStateAt = null;
 let initPromise = null;
 let initStartedAt = null;
 const initTimeoutMs = Number(process.env.WHATSAPP_INIT_TIMEOUT_MS || 300000);
+const initHeartbeatMs = Number(process.env.WHATSAPP_INIT_HEARTBEAT_MS || 15000);
+const resetSessionOnInitTimeout =
+  String(process.env.WHATSAPP_RESET_SESSION_ON_INIT_TIMEOUT || "true") ===
+  "true";
+const puppeteerDumpio =
+  String(process.env.WHATSAPP_PUPPETEER_DUMPIO || "false") === "true";
 
 function logWhatsapp(level, event, metadata = {}) {
   const payload = {
@@ -118,7 +124,12 @@ function resolveSessionPath(targetPath) {
 
 function getSessionTargets() {
   const configured = env.whatsappSessionPath || "/tmp/.wwebjs_auth";
-  const targets = [configured, "/tmp/.wwebjs_cache"];
+  const targets = [
+    configured,
+    "/tmp/.wwebjs_cache",
+    ".wwebjs_cache",
+    "/app/.wwebjs_cache",
+  ];
   const unique = [...new Set(targets.filter(Boolean))];
   return unique.map(resolveSessionPath).filter(Boolean);
 }
@@ -151,6 +162,26 @@ async function cleanupSessionLocks() {
   if (removed.length > 0) {
     logWhatsapp("warn", "session_locks_removed", { count: removed.length });
   }
+}
+
+async function clearSessionDirectories(reason = "manual_reset") {
+  const removedPaths = [];
+  const warnings = [];
+  for (const target of getSessionTargets()) {
+    try {
+      await fs.promises.rm(target, { recursive: true, force: true });
+      removedPaths.push(target);
+    } catch (error) {
+      warnings.push({ target, message: error?.message || "erro ao remover caminho" });
+    }
+  }
+
+  logWhatsapp("warn", "session_directories_cleared", {
+    reason,
+    removedCount: removedPaths.length,
+    warningCount: warnings.length,
+  });
+  return { removedPaths, warnings };
 }
 
 async function killOrphanChromiumProcesses() {
@@ -226,12 +257,19 @@ async function initWhatsApp() {
   lastError = "";
   markState("initializing");
   const executablePath = getChromiumPath();
-  logWhatsapp("info", "init_start", { executablePath, initTimeoutMs, memory: memorySnapshot() });
+  logWhatsapp("info", "init_start", {
+    executablePath,
+    initTimeoutMs,
+    initHeartbeatMs,
+    resetSessionOnInitTimeout,
+    memory: memorySnapshot(),
+  });
 
   initPromise = (async () => {
     const launchProfiles = [
       {
         name: "default",
+        pipe: true,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -250,6 +288,7 @@ async function initWhatsApp() {
       },
       {
         name: "fallback-single-process",
+        pipe: true,
         args: [
           "--no-sandbox",
           "--disable-setuid-sandbox",
@@ -263,6 +302,26 @@ async function initWhatsApp() {
           "--disable-sync",
           "--disable-translate",
           "--mute-audio",
+          "--window-size=1200,800",
+        ],
+      },
+      {
+        name: "fallback-websocket-transport",
+        pipe: false,
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-gpu",
+          "--no-zygote",
+          "--single-process",
+          "--disable-extensions",
+          "--disable-background-networking",
+          "--disable-default-apps",
+          "--disable-sync",
+          "--disable-translate",
+          "--mute-audio",
+          "--remote-debugging-port=0",
           "--window-size=1200,800",
         ],
       },
@@ -292,7 +351,8 @@ async function initWhatsApp() {
           executablePath,
           timeout: initTimeoutMs,
           protocolTimeout: initTimeoutMs,
-          pipe: true,
+          pipe: profile.pipe,
+          dumpio: puppeteerDumpio,
         },
       });
 
@@ -340,7 +400,19 @@ async function initWhatsApp() {
       });
 
       let timeoutHandle = null;
+      let heartbeatHandle = null;
       try {
+        heartbeatHandle = setInterval(() => {
+          logWhatsapp("info", "init_waiting", {
+            profile: profile.name,
+            state: connectionState,
+            ready,
+            hasQr: Boolean(lastQrDataUrl),
+            elapsedMs: initStartedAt ? Date.now() - initStartedAt : null,
+            memory: memorySnapshot(),
+          });
+        }, initHeartbeatMs);
+
         await Promise.race([
           client.initialize(),
           new Promise((_, reject) => {
@@ -365,7 +437,13 @@ async function initWhatsApp() {
         } else {
           markState("init_error");
         }
-        logWhatsapp("error", "init_error", { message, profile: profile.name });
+        logWhatsapp("error", "init_error", {
+          message,
+          profile: profile.name,
+          state: connectionState,
+          memory: memorySnapshot(),
+          stack: error?.stack || null,
+        });
         await destroyClient();
 
         const canRetry = profileIndex < launchProfiles.length - 1;
@@ -373,15 +451,22 @@ async function initWhatsApp() {
           /timeout|Target closed|browser has disconnected|Protocol error|browser is already running|userDataDir/i.test(
             message
           );
+        if (isRetryable && /timeout/i.test(message) && resetSessionOnInitTimeout) {
+          await clearSessionDirectories("init_timeout_retry");
+        }
         if (isRetryable) {
           await cleanupSessionLocks();
           await killOrphanChromiumProcesses();
         }
         if (canRetry && isRetryable) {
+          logWhatsapp("warn", "init_retry_next_profile", {
+            nextProfile: launchProfiles[profileIndex + 1]?.name || null,
+          });
           continue;
         }
       } finally {
         if (timeoutHandle) clearTimeout(timeoutHandle);
+        if (heartbeatHandle) clearInterval(heartbeatHandle);
       }
     }
   })().finally(() => {
@@ -432,16 +517,7 @@ async function resetWhatsAppSession() {
   await cleanupSessionLocks();
   await killOrphanChromiumProcesses();
 
-  const removedPaths = [];
-  const warnings = [];
-  for (const target of getSessionTargets()) {
-    try {
-      await fs.promises.rm(target, { recursive: true, force: true });
-      removedPaths.push(target);
-    } catch (error) {
-      warnings.push({ target, message: error?.message || "erro ao remover caminho" });
-    }
-  }
+  const { removedPaths, warnings } = await clearSessionDirectories("manual_reset");
 
   lastQrDataUrl = null;
   ready = false;
