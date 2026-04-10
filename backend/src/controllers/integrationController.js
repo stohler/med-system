@@ -1,4 +1,6 @@
 const { asyncHandler } = require("../utils/asyncHandler");
+const axios = require("axios");
+const { env } = require("../config/env");
 const {
   getGoogleAuthUrl,
   getGoogleTokens,
@@ -12,6 +14,46 @@ const {
   sendWhatsappNotification,
 } = require("../services/whatsappService");
 
+function workerEndpoint(pathname) {
+  const base = String(env.whatsappWorkerUrl || "").trim();
+  if (!base) return "";
+  return `${base.replace(/\/+$/, "")}${pathname}`;
+}
+
+async function proxyWhatsappToWorker(req, res, { method, pathname, body }) {
+  const url = workerEndpoint(pathname);
+  if (!url) {
+    return false;
+  }
+
+  try {
+    const response = await axios({
+      method,
+      url,
+      data: body,
+      timeout: 180000,
+      headers: {
+        "Content-Type": "application/json",
+        ...(env.whatsappWorkerToken
+          ? { "x-worker-token": env.whatsappWorkerToken }
+          : {}),
+      },
+      validateStatus: () => true,
+    });
+    res.status(response.status).json(response.data);
+    return true;
+  } catch (error) {
+    res.status(503).json({
+      error: true,
+      message:
+        error?.message ||
+        "Falha ao conectar com servico dedicado do WhatsApp.",
+      details: null,
+    });
+    return true;
+  }
+}
+
 const googleAuthUrl = asyncHandler(async (_req, res) => {
   const url = getGoogleAuthUrl("clinic-system");
   res.json({ url });
@@ -24,10 +66,20 @@ const googleTokenExchange = asyncHandler(async (req, res) => {
 });
 
 const whatsappStatus = asyncHandler(async (_req, res) => {
+  const proxied = await proxyWhatsappToWorker(_req, res, {
+    method: "get",
+    pathname: "/status",
+  });
+  if (proxied) return;
   res.json(getWhatsappStatus());
 });
 
-const whatsappQr = asyncHandler(async (_req, res) => {
+const whatsappQr = asyncHandler(async (req, res) => {
+  const proxied = await proxyWhatsappToWorker(req, res, {
+    method: "get",
+    pathname: "/qr",
+  });
+  if (proxied) return;
   try {
     // eslint-disable-next-line no-console
     console.log("[whatsapp] solicitacao de QR recebida");
@@ -88,6 +140,13 @@ const whatsappQr = asyncHandler(async (_req, res) => {
 });
 
 const whatsappTestMessage = asyncHandler(async (req, res) => {
+  const proxied = await proxyWhatsappToWorker(req, res, {
+    method: "post",
+    pathname: "/test-message",
+    body: req.body,
+  });
+  if (proxied) return;
+
   const phone = String(req.body.phone || "").trim();
   const text =
     String(req.body.text || "").trim() ||
@@ -118,6 +177,12 @@ const whatsappTestMessage = asyncHandler(async (req, res) => {
 });
 
 const whatsappRestart = asyncHandler(async (_req, res) => {
+  const proxied = await proxyWhatsappToWorker(_req, res, {
+    method: "post",
+    pathname: "/restart",
+  });
+  if (proxied) return;
+
   // eslint-disable-next-line no-console
   console.log("[whatsapp] solicitacao de reinicio recebida");
   const status = await restartWhatsApp();
@@ -138,6 +203,12 @@ const whatsappRestart = asyncHandler(async (_req, res) => {
 });
 
 const whatsappResetSession = asyncHandler(async (_req, res) => {
+  const proxied = await proxyWhatsappToWorker(_req, res, {
+    method: "post",
+    pathname: "/reset-session",
+  });
+  if (proxied) return;
+
   // eslint-disable-next-line no-console
   console.log("[whatsapp] solicitacao de reset de sessao recebida");
   const result = await resetWhatsAppSession();

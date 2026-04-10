@@ -1,4 +1,4 @@
-name: Deploy backend to Cloud Run
+name: Deploy WhatsApp Worker to Cloud Run
 
 on:
   push:
@@ -6,16 +6,16 @@ on:
       - main
       - cursor/sistema-de-gest-o-cl-nica-2da0
     paths:
-      - "backend/**"
-      - ".github/workflows/deploy-gcp-cloud-run.yml"
+      - "whatsapp-worker/**"
+      - ".github/workflows/deploy-whatsapp-worker-cloud-run.yml"
   workflow_dispatch:
 
 env:
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   GCP_REGION: ${{ secrets.GCP_REGION != '' && secrets.GCP_REGION || 'us-central1' }}
   GAR_REPOSITORY: ${{ secrets.GCP_ARTIFACT_REPO != '' && secrets.GCP_ARTIFACT_REPO || 'med-system' }}
-  CLOUD_RUN_SERVICE: ${{ secrets.GCP_SERVICE_NAME != '' && secrets.GCP_SERVICE_NAME || 'med-system-api' }}
-  IMAGE_NAME: med-system-backend
+  CLOUD_RUN_SERVICE: ${{ secrets.GCP_WHATSAPP_WORKER_SERVICE_NAME != '' && secrets.GCP_WHATSAPP_WORKER_SERVICE_NAME || 'med-system-whatsapp-worker' }}
+  IMAGE_NAME: med-system-whatsapp-worker
 
 jobs:
   deploy:
@@ -51,13 +51,13 @@ jobs:
             fi
           done
 
-      - name: Build and push backend image
+      - name: Build and push worker image
         run: |
           GAR_REPO_CLEAN="${{ env.GAR_REPOSITORY }}"
           GAR_REPO_CLEAN="${GAR_REPO_CLEAN#/}"
           GAR_REPO_CLEAN="${GAR_REPO_CLEAN%/}"
           IMAGE_URI="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${GAR_REPO_CLEAN}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-          docker build -t "${IMAGE_URI}" ./backend
+          docker build -t "${IMAGE_URI}" ./whatsapp-worker
           docker push "${IMAGE_URI}"
           echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
 
@@ -68,25 +68,12 @@ jobs:
           WHATSAPP_MODE: "web"
           WHATSAPP_ENABLED: "true"
           WHATSAPP_WEB_ENABLED: "true"
+          WHATSAPP_SESSION_PATH: "/tmp/.wwebjs_auth"
           PUPPETEER_EXECUTABLE_PATH: "/usr/bin/chromium"
-          WHATSAPP_INIT_TIMEOUT_MS: "120000"
-          SMTP_HOST: "smtp.gmail.com"
-          SMTP_PORT: "587"
-          SMTP_SECURE: "false"
-          MONGODB_URI: "${{ secrets.MONGODB_URI }}"
-          JWT_SECRET: "${{ secrets.JWT_SECRET }}"
-          JWT_EXPIRES_IN: "${{ secrets.JWT_EXPIRES_IN }}"
-          ENCRYPTION_KEY: "${{ secrets.ENCRYPTION_KEY }}"
-          SMTP_USER: "${{ secrets.SMTP_USER }}"
-          SMTP_PASS: "${{ secrets.SMTP_PASS }}"
-          SMTP_FROM: "${{ secrets.SMTP_FROM }}"
-          GOOGLE_CLIENT_ID: "${{ secrets.GOOGLE_CLIENT_ID }}"
-          GOOGLE_CLIENT_SECRET: "${{ secrets.GOOGLE_CLIENT_SECRET }}"
-          GOOGLE_REDIRECT_URI: "${{ secrets.GOOGLE_REDIRECT_URI }}"
-          GOOGLE_CALENDAR_ID: "${{ secrets.GOOGLE_CALENDAR_ID }}"
-          FRONTEND_ORIGIN: "${{ secrets.FRONTEND_ORIGIN }}"
-          WHATSAPP_WORKER_URL: "${{ secrets.WHATSAPP_WORKER_URL }}"
+          WHATSAPP_INIT_TIMEOUT_MS: "180000"
           WHATSAPP_WORKER_TOKEN: "${{ secrets.WHATSAPP_WORKER_TOKEN }}"
+          WHATSAPP_BUSINESS_TOKEN: "${{ secrets.WHATSAPP_BUSINESS_TOKEN }}"
+          WHATSAPP_PHONE_NUMBER_ID: "${{ secrets.WHATSAPP_PHONE_NUMBER_ID }}"
           EOF
 
       - name: Deploy to Cloud Run
@@ -98,6 +85,8 @@ jobs:
             --allow-unauthenticated \
             --cpu 2 \
             --memory 2Gi \
-            --min-instances 0 \
+            --min-instances 1 \
             --max-instances 1 \
+            --concurrency 1 \
+            --timeout 900 \
             --env-vars-file runtime-env.yaml

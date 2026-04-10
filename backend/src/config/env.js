@@ -30,6 +30,8 @@ const env = {
   whatsappSessionPath: process.env.WHATSAPP_SESSION_PATH || ".wwebjs_auth",
   whatsappBusinessToken: process.env.WHATSAPP_BUSINESS_TOKEN || "",
   whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
+  whatsappWorkerUrl: process.env.WHATSAPP_WORKER_URL || "",
+  whatsappWorkerToken: process.env.WHATSAPP_WORKER_TOKEN || "",
 };
 
 module.exports = { env };
