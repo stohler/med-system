@@ -31,7 +31,8 @@ const whatsappQr = asyncHandler(async (_req, res) => {
   try {
     // eslint-disable-next-line no-console
     console.log("[whatsapp] solicitacao de QR recebida");
-    await initWhatsApp();
+    // Nao bloquear a request aguardando init completa.
+    initWhatsApp().catch(() => null);
     const qrCodeDataUrl = await getWhatsappQrCode();
     const status = getWhatsappStatus();
     // eslint-disable-next-line no-console

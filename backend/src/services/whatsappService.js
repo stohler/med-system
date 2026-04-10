@@ -288,6 +288,9 @@ async function initWhatsApp() {
         args: profile.args,
         headless: true,
         executablePath,
+        timeout: initTimeoutMs,
+        protocolTimeout: initTimeoutMs,
+        pipe: true,
       },
     });
 
@@ -419,7 +422,11 @@ async function getWhatsappQrCode() {
   }
 
   if (!client && !initializing) {
-    await initWhatsApp();
+    initWhatsApp().catch((error) => {
+      logWhatsapp("error", "init_background_error", {
+        message: error?.message || "falha em init em background",
+      });
+    });
   }
 
   if (initializing && !lastQrDataUrl) {
