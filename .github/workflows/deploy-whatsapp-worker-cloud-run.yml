@@ -16,6 +16,7 @@ env:
   GAR_REPOSITORY: ${{ secrets.GCP_ARTIFACT_REPO != '' && secrets.GCP_ARTIFACT_REPO || 'med-system' }}
   CLOUD_RUN_SERVICE: ${{ secrets.GCP_WHATSAPP_WORKER_SERVICE_NAME != '' && secrets.GCP_WHATSAPP_WORKER_SERVICE_NAME || 'med-system-whatsapp-worker' }}
   IMAGE_NAME: med-system-whatsapp-worker
+  WHATSAPP_PUPPETEER_DUMPIO: "true"
 
 jobs:
   deploy:
