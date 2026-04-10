@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const patientSchema = new mongoose.Schema(
   {
     fullName: { type: String, required: true, trim: true },
-    birthDate: { type: Date, required: true },
+    birthDate: { type: Date, default: null },
     documentNumber: { type: String, trim: true },
     email: { type: String, trim: true, lowercase: true, default: "" },
     phone: { type: String, trim: true },

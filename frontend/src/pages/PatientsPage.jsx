@@ -92,7 +92,9 @@ export function PatientsPage() {
     try {
       const payload = {
         ...form,
-        birthDate: new Date(`${form.birthDate}T00:00:00`).toISOString(),
+        birthDate: form.birthDate
+          ? new Date(`${form.birthDate}T00:00:00`).toISOString()
+          : "",
       };
 
       let saved;
@@ -164,7 +166,6 @@ export function PatientsPage() {
               type="date"
               value={form.birthDate}
               onChange={(e) => setForm((p) => ({ ...p, birthDate: e.target.value }))}
-              required
             />
           </label>
           <label>

@@ -294,9 +294,12 @@ const scheduleSurgery = asyncHandler(async (req, res) => {
   }
   plannedEnd.setMinutes(plannedEnd.getMinutes() + (procedure.defaultDurationMinutes || 120));
 
-  const locationPrice = (procedure.pricesByLocation || []).find(
+  const locationPrice = (procedure.locationPrices || []).find(
     (entry) => String(entry.location) === String(location._id)
   );
+  if ((procedure.locationPrices || []).length > 0 && !locationPrice) {
+    throw new AppError("Procedimento nao disponivel para este endereco.", 400);
+  }
   const calculatedPriceCents =
     (locationPrice?.priceCents ?? procedure.defaultPriceCents ?? 0) +
     (location.consultationPriceCents || 0);

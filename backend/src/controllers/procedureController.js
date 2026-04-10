@@ -17,9 +17,34 @@ const procedureSchema = z.object({
     )
     .optional()
     .default([]),
+  pricesByLocation: z
+    .array(
+      z.object({
+        location: z.string().min(1),
+        priceCents: z.number().int().min(0),
+      })
+    )
+    .optional()
+    .default([]),
   requiresPreparation: z.boolean().default(false),
   active: z.boolean().optional(),
 });
+
+function normalizeLocationPrices(data = {}) {
+  const source = [
+    ...(Array.isArray(data.locationPrices) ? data.locationPrices : []),
+    ...(Array.isArray(data.pricesByLocation) ? data.pricesByLocation : []),
+  ];
+  const byLocation = new Map();
+  for (const entry of source) {
+    if (!entry?.location) continue;
+    byLocation.set(String(entry.location), {
+      location: String(entry.location),
+      priceCents: Number(entry.priceCents || 0),
+    });
+  }
+  return Array.from(byLocation.values());
+}
 
 const listProcedures = asyncHandler(async (_req, res) => {
   const procedures = await ProcedureType.find().sort({ name: 1 });
@@ -28,13 +53,31 @@ const listProcedures = asyncHandler(async (_req, res) => {
 
 const createProcedure = asyncHandler(async (req, res) => {
   const data = procedureSchema.parse(req.body);
-  const procedure = await ProcedureType.create(data);
+  const procedure = await ProcedureType.create({
+    name: data.name,
+    description: data.description,
+    defaultDurationMinutes: data.defaultDurationMinutes,
+    defaultPriceCents: data.defaultPriceCents,
+    requiresPreparation: data.requiresPreparation,
+    active: data.active,
+    locationPrices: normalizeLocationPrices(data),
+  });
   res.status(201).json({ procedure });
 });
 
 const updateProcedure = asyncHandler(async (req, res) => {
   const payload = procedureSchema.partial().parse(req.body);
-  const procedure = await ProcedureType.findByIdAndUpdate(req.params.id, payload, {
+  const hasLocationPayload =
+    Object.prototype.hasOwnProperty.call(req.body, "locationPrices") ||
+    Object.prototype.hasOwnProperty.call(req.body, "pricesByLocation");
+  const normalizedPayload = {
+    ...payload,
+    ...(hasLocationPayload
+      ? { locationPrices: normalizeLocationPrices(req.body) }
+      : {}),
+  };
+  delete normalizedPayload.pricesByLocation;
+  const procedure = await ProcedureType.findByIdAndUpdate(req.params.id, normalizedPayload, {
     new: true,
     runValidators: true,
   });

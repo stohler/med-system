@@ -91,7 +91,9 @@ export function AppointmentsPage() {
     setForm((prev) => ({
       ...prev,
       patientId: selected.id,
-      patientSearch: `${selected.fullName} - ${dayjs(selected.birthDate).format("DD/MM/YYYY")}`,
+      patientSearch: `${selected.fullName} - ${
+        selected.birthDate ? dayjs(selected.birthDate).format("DD/MM/YYYY") : "--"
+      }`,
     }));
     if (locationRouter.state?.openAppointmentForm) {
       setShowForm(true);

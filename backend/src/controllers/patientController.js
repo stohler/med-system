@@ -8,10 +8,18 @@ function normalizeOptionalString(value) {
   return normalized || undefined;
 }
 
+function normalizeOptionalDate(value) {
+  if (value === undefined || value === null) return undefined;
+  if (value === "") return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
 function buildPatientPayload(body) {
   const payload = { ...body };
   const documentNumber = normalizeOptionalString(payload.documentNumber);
   const phone = normalizeOptionalString(payload.phone);
+  const birthDate = normalizeOptionalDate(payload.birthDate);
 
   if (documentNumber === undefined) {
     delete payload.documentNumber;
@@ -23,6 +31,12 @@ function buildPatientPayload(body) {
     delete payload.phone;
   } else {
     payload.phone = phone;
+  }
+
+  if (birthDate === undefined) {
+    delete payload.birthDate;
+  } else {
+    payload.birthDate = birthDate;
   }
 
   return payload;
@@ -119,6 +133,12 @@ const updatePatient = asyncHandler(async (req, res) => {
     normalizeOptionalString(req.body.phone) === undefined
   ) {
     unset.phone = "";
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(req.body, "birthDate") &&
+    normalizeOptionalDate(req.body.birthDate) === undefined
+  ) {
+    unset.birthDate = "";
   }
 
   const updateOperation = {};

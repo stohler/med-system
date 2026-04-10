@@ -55,12 +55,15 @@ async function calculatePrice(locationId, procedureTypeId) {
     throw new NotFoundError("Endereco ou procedimento nao encontrado");
   }
 
-  const locationOverrides = Array.isArray(procedure.locationPricesCents)
-    ? procedure.locationPricesCents
+  const locationOverrides = Array.isArray(procedure.locationPrices)
+    ? procedure.locationPrices
     : [];
   const override = locationOverrides.find(
-    (item) => String(item.locationId) === String(location._id)
+    (item) => String(item.location) === String(location._id)
   );
+  if (locationOverrides.length > 0 && !override) {
+    throw new AppError("Procedimento nao disponivel para este endereco", 400);
+  }
   const procedurePrice = override ? override.priceCents : procedure.defaultPriceCents || 0;
 
   return (location.consultationPriceCents || 0) + procedurePrice;

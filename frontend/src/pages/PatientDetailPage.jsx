@@ -30,7 +30,9 @@ export function PatientDetailPage() {
     try {
       await api.put(`/patients/${id}`, {
         fullName: patient.fullName,
-        birthDate: new Date(`${dayjs(patient.birthDate).format("YYYY-MM-DD")}T00:00:00`).toISOString(),
+        birthDate: patient.birthDate
+          ? new Date(`${dayjs(patient.birthDate).format("YYYY-MM-DD")}T00:00:00`).toISOString()
+          : "",
         documentNumber: patient.documentNumber,
         email: patient.email || "",
         phone: patient.phone,
@@ -63,9 +65,8 @@ export function PatientDetailPage() {
           Nascimento
           <input
             type="date"
-            value={dayjs(patient.birthDate).format("YYYY-MM-DD")}
+            value={patient.birthDate ? dayjs(patient.birthDate).format("YYYY-MM-DD") : ""}
             onChange={(e) => setPatient((p) => ({ ...p, birthDate: e.target.value }))}
-            required
           />
         </label>
         <label>

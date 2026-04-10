@@ -31,7 +31,7 @@ const emptyProcedure = {
   defaultDurationMinutes: 30,
   defaultPriceCents: 0,
   requiresPreparation: false,
-  pricesByLocation: [],
+  locationPrices: [],
 };
 
 export function SettingsPage() {
@@ -57,10 +57,18 @@ export function SettingsPage() {
   }, []);
 
   const pricesPreview = useMemo(() => {
-    const map = new Map(procedureForm.pricesByLocation.map((item) => [item.location, item.priceCents]));
+    const map = new Map(
+      (procedureForm.locationPrices || []).map((item) => [
+        String(item.location),
+        Number(item.priceCents || 0),
+      ])
+    );
     return locations.map((location) => ({
       location,
-      price: map.has(location._id) ? map.get(location._id) : procedureForm.defaultPriceCents,
+      enabled: map.has(String(location._id)),
+      price: map.has(String(location._id))
+        ? map.get(String(location._id))
+        : procedureForm.defaultPriceCents,
     }));
   }, [locations, procedureForm]);
 
@@ -97,7 +105,7 @@ export function SettingsPage() {
       defaultDurationMinutes: procedure.defaultDurationMinutes || 30,
       defaultPriceCents: procedure.defaultPriceCents || 0,
       requiresPreparation: Boolean(procedure.requiresPreparation),
-      pricesByLocation: procedure.pricesByLocation || [],
+      locationPrices: procedure.locationPrices || procedure.pricesByLocation || [],
     });
     setShowProcedureForm(true);
   };
@@ -133,6 +141,10 @@ export function SettingsPage() {
         ...procedureForm,
         defaultDurationMinutes: Number(procedureForm.defaultDurationMinutes),
         defaultPriceCents: Number(procedureForm.defaultPriceCents),
+        locationPrices: (procedureForm.locationPrices || []).map((entry) => ({
+          location: entry.location,
+          priceCents: Number(entry.priceCents || 0),
+        })),
       };
       if (editingProcedureId) {
         await api.put(`/procedures/${editingProcedureId}`, payload);
@@ -150,10 +162,31 @@ export function SettingsPage() {
   const updateLocationPrice = (locationId, value) => {
     const priceCents = parseBrlToCents(value);
     setProcedureForm((prev) => {
-      const remaining = prev.pricesByLocation.filter((entry) => entry.location !== locationId);
+      const remaining = (prev.locationPrices || []).filter(
+        (entry) => String(entry.location) !== String(locationId)
+      );
       return {
         ...prev,
-        pricesByLocation: [...remaining, { location: locationId, priceCents }],
+        locationPrices: [...remaining, { location: locationId, priceCents }],
+      };
+    });
+  };
+
+  const toggleProcedureAtLocation = (locationId, enabled) => {
+    setProcedureForm((prev) => {
+      const current = prev.locationPrices || [];
+      const remaining = current.filter(
+        (entry) => String(entry.location) !== String(locationId)
+      );
+      if (!enabled) {
+        return { ...prev, locationPrices: remaining };
+      }
+      return {
+        ...prev,
+        locationPrices: [
+          ...remaining,
+          { location: locationId, priceCents: prev.defaultPriceCents || 0 },
+        ],
       };
     });
   };
@@ -302,12 +335,25 @@ export function SettingsPage() {
 
             <div className="card-mini">
               <strong>Valor por endereco</strong>
-              {pricesPreview.map(({ location, price }) => (
+              {pricesPreview.map(({ location, price, enabled }) => (
                 <label key={location._id}>
-                  {location.name}
+                  <span className="inline-actions">
+                    <strong>{location.name}</strong>
+                    <label className="inline-check">
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={(e) =>
+                          toggleProcedureAtLocation(location._id, e.target.checked)
+                        }
+                      />
+                      Realiza neste endereco
+                    </label>
+                  </span>
                   <input
                     value={formatBrlInputFromCents(price)}
                     onChange={(e) => updateLocationPrice(location._id, e.target.value)}
+                    disabled={!enabled}
                   />
                 </label>
               ))}

@@ -14,7 +14,7 @@ const router = Router();
 
 const patientSchema = z.object({
   fullName: z.string().min(3),
-  birthDate: z.string().datetime(),
+  birthDate: z.string().datetime().optional().or(z.literal("")),
   documentNumber: z.string().min(5).optional().or(z.literal("")),
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().min(8).optional().or(z.literal("")),
