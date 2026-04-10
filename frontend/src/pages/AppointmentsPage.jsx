@@ -63,6 +63,15 @@ export function AppointmentsPage() {
   const navigate = useNavigate();
   const locationRouter = useLocation();
 
+  const calculateEndsAt = (startsAtValue, procedureTypeId) => {
+    if (!startsAtValue) return "";
+    const startsAt = dayjs(startsAtValue);
+    if (!startsAt.isValid()) return "";
+    const procedure = procedures.find((item) => String(item._id) === String(procedureTypeId));
+    const durationMinutes = Number(procedure?.defaultDurationMinutes || 30);
+    return startsAt.add(durationMinutes, "minute").format("YYYY-MM-DDTHH:mm");
+  };
+
   const load = async () => {
     const weekFrom = weekStart.startOf("day").toISOString();
     const weekTo = weekStart.add(6, "day").endOf("day").toISOString();
@@ -87,13 +96,24 @@ export function AppointmentsPage() {
   useEffect(() => {
     const selected = locationRouter.state?.selectedPatient;
     if (!selected) return;
+    const draft = locationRouter.state?.appointmentDraft || {};
+    const draftWeekStart = locationRouter.state?.appointmentWeekStart;
+
+    if (draftWeekStart) {
+      const parsedWeek = dayjs(draftWeekStart);
+      if (parsedWeek.isValid()) {
+        setWeekStart(parsedWeek.startOf("isoWeek"));
+      }
+    }
 
     setForm((prev) => ({
       ...prev,
+      ...draft,
       patientId: selected.id,
-      patientSearch: `${selected.fullName} - ${
-        selected.birthDate ? dayjs(selected.birthDate).format("DD/MM/YYYY") : "--"
-      }`,
+      patientSearch: patientLabel({
+        fullName: selected.fullName,
+        birthDate: selected.birthDate,
+      }),
     }));
     if (locationRouter.state?.openAppointmentForm) {
       setShowForm(true);
@@ -131,11 +151,16 @@ export function AppointmentsPage() {
     const end = start.add(30, "minute");
 
     setForm((prev) => ({
+      ...emptyForm,
       ...prev,
       location: prev.location || locations[0]?._id || "",
       procedureType: prev.procedureType || procedures[0]?._id || "",
       startsAt: toDateTimeLocal(start),
-      endsAt: toDateTimeLocal(end),
+      endsAt:
+        calculateEndsAt(
+          toDateTimeLocal(start),
+          prev.procedureType || procedures[0]?._id || ""
+        ) || toDateTimeLocal(end),
     }));
     setShowForm(true);
   };
@@ -183,6 +208,14 @@ export function AppointmentsPage() {
       state: {
         returnTo: "/appointments",
         prefillPatientName: typed,
+        appointmentWeekStart: weekStart.toISOString(),
+        appointmentDraft: {
+          location: form.location,
+          procedureType: form.procedureType,
+          startsAt: form.startsAt,
+          endsAt: form.endsAt,
+          notes: form.notes,
+        },
       },
     });
   };
@@ -336,7 +369,17 @@ export function AppointmentsPage() {
             Procedimento
             <select
               value={form.procedureType}
-              onChange={(e) => setForm((prev) => ({ ...prev, procedureType: e.target.value }))}
+              onChange={(e) =>
+                setForm((prev) => {
+                  const nextProcedureType = e.target.value;
+                  return {
+                    ...prev,
+                    procedureType: nextProcedureType,
+                    endsAt:
+                      calculateEndsAt(prev.startsAt, nextProcedureType) || prev.endsAt,
+                  };
+                })
+              }
               required
             >
               <option value="">Selecione</option>
@@ -353,7 +396,14 @@ export function AppointmentsPage() {
             <input
               type="datetime-local"
               value={form.startsAt}
-              onChange={(e) => setForm((prev) => ({ ...prev, startsAt: e.target.value }))}
+              onChange={(e) =>
+                setForm((prev) => ({
+                  ...prev,
+                  startsAt: e.target.value,
+                  endsAt:
+                    calculateEndsAt(e.target.value, prev.procedureType) || prev.endsAt,
+                }))
+              }
               required
             />
           </label>

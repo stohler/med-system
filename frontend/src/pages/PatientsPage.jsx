@@ -31,6 +31,8 @@ export function PatientsPage() {
     const state = location.state || {};
     return state.returnTo === "/appointments";
   }, [location.state]);
+  const appointmentDraft = location.state?.appointmentDraft || null;
+  const appointmentWeekStart = location.state?.appointmentWeekStart || null;
 
   useEffect(() => {
     if (location.state?.prefillPatientName) {
@@ -117,6 +119,8 @@ export function PatientsPage() {
               birthDate: saved.birthDate,
             },
             openAppointmentForm: true,
+            appointmentDraft,
+            appointmentWeekStart,
           },
           replace: true,
         });
