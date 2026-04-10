@@ -87,6 +87,7 @@ jobs:
             --memory 2Gi \
             --min-instances 1 \
             --max-instances 1 \
+            --no-cpu-throttling \
             --concurrency 1 \
             --timeout 900 \
             --env-vars-file runtime-env.yaml

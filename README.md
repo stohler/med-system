@@ -174,6 +174,14 @@ Foi adicionado workflow em:
 `/.github/workflows/deploy-whatsapp-worker-cloud-run.yml`
 
 Esse servico e separado do backend e mantem a sessao WhatsApp Web no proprio worker.
+Para estabilidade do WhatsApp Web no Cloud Run, o deploy do worker usa:
+
+- `min-instances=1`
+- `max-instances=1`
+- `concurrency=1`
+- `cpu=2`
+- `memory=2Gi`
+- `--no-cpu-throttling` (CPU sempre alocada)
 
 ### Secrets do GitHub para worker
 
