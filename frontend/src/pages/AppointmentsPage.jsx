@@ -291,7 +291,11 @@ export function AppointmentsPage() {
       .filter((item) => dayjs(item.startsAt).isSame(dayDate, "day"))
       .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
 
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=980,height=720");
+    const printWindow = window.open(
+      "about:blank",
+      "_blank",
+      "width=980,height=720"
+    );
     if (!printWindow) {
       setError("Nao foi possivel abrir a janela de impressao. Libere pop-ups e tente novamente.");
       return;
@@ -324,7 +328,7 @@ export function AppointmentsPage() {
         `;
 
     const title = `Resumo de pacientes - ${dayMeta?.label || "Dia"} ${dayDate.format("DD/MM/YYYY")}`;
-    printWindow.document.write(`
+    const printHtml = `
       <!doctype html>
       <html lang="pt-BR">
         <head>
@@ -356,13 +360,16 @@ export function AppointmentsPage() {
           </table>
         </body>
       </html>
-    `);
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(printHtml);
     printWindow.document.close();
     printWindow.focus();
-    setTimeout(() => {
+    printWindow.onload = () => {
+      printWindow.focus();
       printWindow.print();
-      printWindow.close();
-    }, 150);
+    };
   };
 
   return (
