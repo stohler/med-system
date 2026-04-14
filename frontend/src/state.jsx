@@ -21,6 +21,24 @@ export function AuthProvider({ children }) {
     else localStorage.removeItem("med_user");
   }, [user]);
 
+  useEffect(() => {
+    const interceptorId = api.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        const statusCode = error?.response?.status;
+        if (statusCode === 401 && token) {
+          setToken("");
+          setUser(null);
+          setAuthToken("");
+        }
+        return Promise.reject(error);
+      }
+    );
+    return () => {
+      api.interceptors.response.eject(interceptorId);
+    };
+  }, [token]);
+
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
     setToken(data.token);

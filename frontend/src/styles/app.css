@@ -292,8 +292,26 @@ button:disabled {
   gap: 8px;
 }
 
+.day-actions-card {
+  display: grid;
+  gap: 6px;
+}
+
 .day-add-btn {
   background: #0f766e;
+}
+
+.day-print-btn {
+  width: 100%;
+}
+
+.login-submit {
+  box-shadow: 0 4px 10px rgba(37, 99, 235, 0.25);
+}
+
+.login-submit:active:not(:disabled) {
+  transform: translateY(1px) scale(0.97);
+  box-shadow: 0 2px 5px rgba(37, 99, 235, 0.2);
 }
 
 .week-grid-wrap {

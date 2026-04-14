@@ -49,6 +49,15 @@ function locationCardStyle(location) {
   };
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 export function AppointmentsPage() {
   const [patients, setPatients] = useState([]);
   const [locations, setLocations] = useState([]);
@@ -275,6 +284,86 @@ export function AppointmentsPage() {
 
   const previousWeek = () => setWeekStart((prev) => prev.subtract(7, "day"));
   const nextWeek = () => setWeekStart((prev) => prev.add(7, "day"));
+  const printDaySummary = (dayKey) => {
+    const dayMeta = DAYS.find((day) => day.key === dayKey);
+    const dayDate = weekStart.isoWeekday(dayKey);
+    const dayAppointments = appointments
+      .filter((item) => dayjs(item.startsAt).isSame(dayDate, "day"))
+      .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
+
+    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=980,height=720");
+    if (!printWindow) {
+      setError("Nao foi possivel abrir a janela de impressao. Libere pop-ups e tente novamente.");
+      return;
+    }
+
+    const rowsHtml =
+      dayAppointments.length > 0
+        ? dayAppointments
+            .map((item) => {
+              const startsAt = dayjs(item.startsAt);
+              const endsAt = dayjs(item.endsAt);
+              const period = `${startsAt.format("HH:mm")} - ${
+                endsAt.isValid() ? endsAt.format("HH:mm") : "--:--"
+              }`;
+              return `
+                <tr>
+                  <td>${escapeHtml(period)}</td>
+                  <td>${escapeHtml(item.patient?.fullName || "Sem paciente")}</td>
+                  <td>${escapeHtml(item.procedureType?.name || "Sem procedimento")}</td>
+                  <td>${escapeHtml(item.location?.name || "Sem local")}</td>
+                  <td>${escapeHtml(item.notes || "-")}</td>
+                </tr>
+              `;
+            })
+            .join("")
+        : `
+          <tr>
+            <td colspan="5">Nenhum agendamento para este dia.</td>
+          </tr>
+        `;
+
+    const title = `Resumo de pacientes - ${dayMeta?.label || "Dia"} ${dayDate.format("DD/MM/YYYY")}`;
+    printWindow.document.write(`
+      <!doctype html>
+      <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapeHtml(title)}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; color: #111827; }
+            h1 { margin: 0 0 6px; font-size: 20px; }
+            p { margin: 0 0 16px; color: #4b5563; }
+            table { width: 100%; border-collapse: collapse; }
+            th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; font-size: 13px; }
+            th { background: #f3f4f6; }
+          </style>
+        </head>
+        <body>
+          <h1>${escapeHtml(title)}</h1>
+          <p>Total de agendamentos: ${dayAppointments.length}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Horario</th>
+                <th>Paciente</th>
+                <th>Procedimento</th>
+                <th>Endereco</th>
+                <th>Observacoes</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 150);
+  };
 
   return (
     <section className="stack">
@@ -294,15 +383,24 @@ export function AppointmentsPage() {
         {DAYS.map((day) => {
           const date = weekStart.isoWeekday(day.key);
           return (
-            <button
-              key={day.key}
-              type="button"
-              className="day-add-btn"
-              onClick={() => openForm(day.key)}
-              title={`Novo agendamento em ${day.label}`}
-            >
-              + {day.label} {date.format("DD/MM")}
-            </button>
+            <div key={day.key} className="day-actions-card">
+              <button
+                type="button"
+                className="day-add-btn"
+                onClick={() => openForm(day.key)}
+                title={`Novo agendamento em ${day.label}`}
+              >
+                + {day.label} {date.format("DD/MM")}
+              </button>
+              <button
+                type="button"
+                className="btn-ghost day-print-btn"
+                onClick={() => printDaySummary(day.key)}
+                title={`Imprimir resumo de ${day.label}`}
+              >
+                Imprimir
+              </button>
+            </div>
           );
         })}
       </div>

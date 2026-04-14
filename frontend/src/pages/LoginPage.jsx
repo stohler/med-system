@@ -8,10 +8,12 @@ export function LoginPage() {
   const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const submit = async (event) => {
     event.preventDefault();
     setError("");
+    setSubmitting(true);
     try {
       if (mode === "login") {
         await login(form.email, form.password);
@@ -21,6 +23,8 @@ export function LoginPage() {
       navigate("/");
     } catch (err) {
       setError(err?.response?.data?.message || "Falha na autenticacao");
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -64,11 +68,20 @@ export function LoginPage() {
 
         {error ? <p className="error">{error}</p> : null}
 
-        <button type="submit">{mode === "login" ? "Entrar" : "Criar conta"}</button>
+        <button type="submit" className="login-submit" disabled={submitting}>
+          {mode === "login"
+            ? submitting
+              ? "Entrando..."
+              : "Entrar"
+            : submitting
+              ? "Criando conta..."
+              : "Criar conta"}
+        </button>
 
         <button
           type="button"
           className="btn-ghost"
+          disabled={submitting}
           onClick={() => setMode((prev) => (prev === "login" ? "register" : "login"))}
         >
           {mode === "login" ? "Primeiro acesso? Cadastre-se" : "Ja possui conta? Entrar"}
