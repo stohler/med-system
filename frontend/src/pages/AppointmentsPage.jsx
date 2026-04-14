@@ -49,6 +49,50 @@ function locationCardStyle(location) {
   };
 }
 
+function TrashIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      aria-hidden="true"
+    >
+      <path
+        d="M4 7H20"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M9 7V5.8C9 5.24772 9.44772 4.8 10 4.8H14C14.5523 4.8 15 5.24772 15 5.8V7"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M7 7L7.9 18.4C7.94099 18.9195 8.37548 19.32 8.896 19.32H15.104C15.6245 19.32 16.059 18.9195 16.1 18.4L17 7"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M10 10.5V16"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <path
+        d="M14 10.5V16"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replaceAll("&", "&amp;")
@@ -284,6 +328,24 @@ export function AppointmentsPage() {
 
   const previousWeek = () => setWeekStart((prev) => prev.subtract(7, "day"));
   const nextWeek = () => setWeekStart((prev) => prev.add(7, "day"));
+  const deleteEditingAppointment = async () => {
+    if (!form.editingId) return;
+    const confirmed = window.confirm("Deseja cancelar este agendamento?");
+    if (!confirmed) return;
+
+    setError("");
+    try {
+      await api.delete(`/appointments/${form.editingId}`);
+      setShowForm(false);
+      setForm(emptyForm);
+      await load();
+    } catch (err) {
+      setError(
+        err?.response?.data?.message || "Falha ao cancelar agendamento"
+      );
+    }
+  };
+
   const printDaySummary = (dayKey) => {
     const dayMeta = DAYS.find((day) => day.key === dayKey);
     const dayDate = weekStart.isoWeekday(dayKey);
@@ -414,7 +476,20 @@ export function AppointmentsPage() {
 
       {showForm ? (
         <form className="card form-grid" onSubmit={submit}>
-          <h3>{form.editingId ? "Editar agendamento" : "Novo agendamento"}</h3>
+          <div className="form-title-row">
+            <h3>{form.editingId ? "Editar agendamento" : "Novo agendamento"}</h3>
+            {form.editingId ? (
+              <button
+                type="button"
+                className="icon-danger-button"
+                title="Cancelar agendamento"
+                aria-label="Cancelar agendamento"
+                onClick={deleteEditingAppointment}
+              >
+                <TrashIcon />
+              </button>
+            ) : null}
+          </div>
 
           <label className="autocomplete-wrap">
             Paciente
