@@ -14,17 +14,19 @@ const {
   sendWhatsappNotification,
 } = require("../services/whatsappService");
 
-function workerEndpoint(pathname) {
-  const base = String(env.whatsappWorkerUrl || "").trim();
+function serviceEndpoint(pathname) {
+  const base = String(env.whatsappServiceBaseUrl || "").trim();
   if (!base) return "";
   return `${base.replace(/\/+$/, "")}${pathname}`;
 }
 
-async function proxyWhatsappToWorker(req, res, { method, pathname, body }) {
-  const url = workerEndpoint(pathname);
+async function proxyWhatsappToExternalService(req, res, { method, pathname, body }) {
+  const url = serviceEndpoint(pathname);
   if (!url) {
     return false;
   }
+
+  const token = String(env.whatsappServiceToken || "").trim();
 
   try {
     const response = await axios({
@@ -34,8 +36,12 @@ async function proxyWhatsappToWorker(req, res, { method, pathname, body }) {
       timeout: 180000,
       headers: {
         "Content-Type": "application/json",
-        ...(env.whatsappWorkerToken
-          ? { "x-worker-token": env.whatsappWorkerToken }
+        ...(token
+          ? {
+              "x-worker-token": token,
+              "x-service-token": token,
+              Authorization: `Bearer ${token}`,
+            }
           : {}),
       },
       validateStatus: () => true,
@@ -66,7 +72,7 @@ const googleTokenExchange = asyncHandler(async (req, res) => {
 });
 
 const whatsappStatus = asyncHandler(async (_req, res) => {
-  const proxied = await proxyWhatsappToWorker(_req, res, {
+  const proxied = await proxyWhatsappToExternalService(_req, res, {
     method: "get",
     pathname: "/status",
   });
@@ -75,7 +81,7 @@ const whatsappStatus = asyncHandler(async (_req, res) => {
 });
 
 const whatsappQr = asyncHandler(async (req, res) => {
-  const proxied = await proxyWhatsappToWorker(req, res, {
+  const proxied = await proxyWhatsappToExternalService(req, res, {
     method: "get",
     pathname: "/qr",
   });
@@ -140,7 +146,7 @@ const whatsappQr = asyncHandler(async (req, res) => {
 });
 
 const whatsappTestMessage = asyncHandler(async (req, res) => {
-  const proxied = await proxyWhatsappToWorker(req, res, {
+  const proxied = await proxyWhatsappToExternalService(req, res, {
     method: "post",
     pathname: "/test-message",
     body: req.body,
@@ -177,7 +183,7 @@ const whatsappTestMessage = asyncHandler(async (req, res) => {
 });
 
 const whatsappRestart = asyncHandler(async (_req, res) => {
-  const proxied = await proxyWhatsappToWorker(_req, res, {
+  const proxied = await proxyWhatsappToExternalService(_req, res, {
     method: "post",
     pathname: "/restart",
   });
@@ -203,7 +209,7 @@ const whatsappRestart = asyncHandler(async (_req, res) => {
 });
 
 const whatsappResetSession = asyncHandler(async (_req, res) => {
-  const proxied = await proxyWhatsappToWorker(_req, res, {
+  const proxied = await proxyWhatsappToExternalService(_req, res, {
     method: "post",
     pathname: "/reset-session",
   });

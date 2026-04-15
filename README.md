@@ -146,8 +146,8 @@ No repositório GitHub, configure:
 - `SMTP_USER`
 - `SMTP_PASS` (App Password do Gmail)
 - `SMTP_FROM`
-- `WHATSAPP_WORKER_URL` (URL publica do servico dedicado do WhatsApp worker)
-- `WHATSAPP_WORKER_TOKEN` (token compartilhado entre backend e worker)
+- `WHATSAPP_SERVICE_BASE_URL` (URL base do servico externo de WhatsApp)
+- `WHATSAPP_SERVICE_TOKEN` (token compartilhado entre backend e servico externo, se exigido)
 
 ### Variaveis ajustaveis no workflow
 
@@ -167,7 +167,28 @@ Push para branch `main` ou execucao manual em **Actions > Deploy Backend to Clou
 - Para manter sessao de forma robusta, o ideal e persistir auth em storage externo e usar instancia sempre ativa (pode sair do free tier).
 - Mesmo assim, o modo `web` foi mantido como solicitado e habilitado por variavel (`WHATSAPP_MODE=web`).
 
-## Deploy do WhatsApp Worker dedicado (Cloud Run)
+## Integracao com servico externo de WhatsApp
+
+O backend atua como proxy para um servico externo de WhatsApp atraves das rotas:
+
+- `GET /api/integrations/whatsapp/status`
+- `GET /api/integrations/whatsapp/qr`
+- `POST /api/integrations/whatsapp/restart`
+- `POST /api/integrations/whatsapp/reset-session`
+- `POST /api/integrations/whatsapp/test-message`
+
+### Configuracao recomendada para o novo cenario
+
+No deploy do backend, configure:
+
+- `WHATSAPP_SERVICE_BASE_URL=http://api-sandbox.moneri.com.br/v1/whatsapp-service`
+- `WHATSAPP_SERVICE_TOKEN=<token-do-servico>` (se aplicavel)
+
+Quando `WHATSAPP_SERVICE_BASE_URL` estiver definido, o backend encaminha as chamadas de WhatsApp para esse endpoint externo.
+
+> Compatibilidade retroativa: `WHATSAPP_WORKER_URL` e `WHATSAPP_WORKER_TOKEN` continuam funcionando como alias.
+
+## Deploy do WhatsApp Worker dedicado (Cloud Run) [opcional]
 
 Foi adicionado workflow em:
 
@@ -196,10 +217,10 @@ Para estabilidade do WhatsApp Web no Cloud Run, o deploy do worker usa:
 
 No deploy do backend, configure:
 
-- `WHATSAPP_WORKER_URL=https://<url-do-worker>`
-- `WHATSAPP_WORKER_TOKEN=<mesmo-token-do-worker>`
+- `WHATSAPP_SERVICE_BASE_URL=https://<url-do-worker>`
+- `WHATSAPP_SERVICE_TOKEN=<mesmo-token-do-worker>`
 
-Quando `WHATSAPP_WORKER_URL` estiver definido, as rotas de integracao WhatsApp do backend passam a atuar como proxy para o worker dedicado.
+Quando `WHATSAPP_SERVICE_BASE_URL` estiver definido, as rotas de integracao WhatsApp do backend passam a atuar como proxy para o servico configurado.
 
 ## Deploy do frontend no Cloud Run
 
