@@ -2,6 +2,7 @@ const { Router } = require("express");
 const { requireAuth } = require("../middlewares/auth");
 const {
   googleAuthUrl,
+  googleCallback,
   googleTokenExchange,
   whatsappStatus,
   whatsappQr,
@@ -11,6 +12,8 @@ const {
 } = require("../controllers/integrationController");
 
 const router = Router();
+
+router.get("/google/callback", googleCallback);
 
 router.use(requireAuth);
 router.get("/google/url", googleAuthUrl);

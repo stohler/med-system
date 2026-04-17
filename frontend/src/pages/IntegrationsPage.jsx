@@ -3,6 +3,7 @@ import { api } from "../api";
 
 export function IntegrationsPage() {
   const [googleUrl, setGoogleUrl] = useState("");
+  const [googleTokens, setGoogleTokens] = useState("");
   const [whatsapp, setWhatsapp] = useState(null);
   const [qr, setQr] = useState("");
   const [error, setError] = useState("");
@@ -13,6 +14,7 @@ export function IntegrationsPage() {
   const loadGoogle = async () => {
     setError("");
     setSuccess("");
+    setGoogleTokens("");
     try {
       const { data } = await api.get("/integrations/google/url");
       setGoogleUrl(data.url || "");
@@ -100,8 +102,51 @@ export function IntegrationsPage() {
     }
   };
 
+  const copyGoogleTokens = async () => {
+    if (!googleTokens) return;
+    try {
+      await navigator.clipboard.writeText(googleTokens);
+      setSuccess("Tokens do Google copiados para a area de transferencia.");
+    } catch (_error) {
+      setError("Nao foi possivel copiar automaticamente. Copie manualmente o texto.");
+    }
+  };
+
   useEffect(() => {
     loadWhatsappStatus().catch(() => null);
+  }, []);
+
+  useEffect(() => {
+    const allowedOrigins = new Set();
+    try {
+      const apiOrigin = new URL(
+        String(api.defaults.baseURL || ""),
+        window.location.origin
+      ).origin;
+      allowedOrigins.add(apiOrigin);
+    } catch (_error) {
+      // ignore parse failures
+    }
+
+    const handleGoogleCallbackMessage = (event) => {
+      const data = event?.data || {};
+      if (allowedOrigins.size > 0 && !allowedOrigins.has(event.origin)) return;
+      if (data.source !== "med-google-oauth") return;
+      const payload = data.payload || {};
+      if (payload.ok && payload.tokens) {
+        const serialized = JSON.stringify(payload.tokens, null, 2);
+        setGoogleTokens(serialized);
+        setSuccess(
+          "Google Calendar vinculado. Tokens recebidos no frontend para uso nas chamadas de agendamento."
+        );
+        setError("");
+        return;
+      }
+      setError(payload.message || "Falha ao concluir callback do Google Calendar.");
+    };
+
+    window.addEventListener("message", handleGoogleCallbackMessage);
+    return () => window.removeEventListener("message", handleGoogleCallbackMessage);
   }, []);
 
   useEffect(() => {
@@ -123,6 +168,17 @@ export function IntegrationsPage() {
           <p>
             <a href={googleUrl} target="_blank" rel="noreferrer">Conectar Google Calendar</a>
           </p>
+        ) : null}
+        {googleTokens ? (
+          <div className="form-grid">
+            <label>
+              Tokens recebidos no callback
+              <textarea value={googleTokens} readOnly />
+            </label>
+            <button type="button" className="btn-ghost" onClick={copyGoogleTokens}>
+              Copiar tokens
+            </button>
+          </div>
         ) : null}
       </div>
 

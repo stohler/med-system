@@ -20,6 +20,24 @@ function serviceEndpoint(pathname) {
   return `${base.replace(/\/+$/, "")}${pathname}`;
 }
 
+function normalizePostMessageOrigins() {
+  const rawOrigins = Array.isArray(env.frontendOrigins)
+    ? env.frontendOrigins
+    : [env.frontendOrigin];
+  const normalized = new Set();
+  for (const origin of rawOrigins) {
+    const raw = String(origin || "").trim().replace(/\/+$/, "");
+    if (!raw) continue;
+    if (/^https?:\/\//i.test(raw)) {
+      normalized.add(raw);
+      continue;
+    }
+    normalized.add(`https://${raw}`);
+    normalized.add(`http://${raw}`);
+  }
+  return [...normalized];
+}
+
 async function proxyWhatsappToExternalService(req, res, { method, pathname, body }) {
   const url = serviceEndpoint(pathname);
   if (!url) {
@@ -63,6 +81,116 @@ async function proxyWhatsappToExternalService(req, res, { method, pathname, body
 const googleAuthUrl = asyncHandler(async (_req, res) => {
   const url = getGoogleAuthUrl("clinic-system");
   res.json({ url });
+});
+
+const googleCallback = asyncHandler(async (req, res) => {
+  const state = String(req.query.state || "");
+  const oauthError = String(req.query.error || "");
+  const code = String(req.query.code || "");
+
+  let payload = {
+    ok: false,
+    state,
+    message: "Falha ao concluir autorizacao com Google Calendar.",
+    error: null,
+    tokens: null,
+  };
+
+  if (oauthError) {
+    payload = {
+      ...payload,
+      error: oauthError,
+      message: `Google retornou erro de autorizacao: ${oauthError}`,
+    };
+  } else if (!code) {
+    payload = {
+      ...payload,
+      error: "missing_code",
+      message: "Codigo de autorizacao nao informado no callback.",
+    };
+  } else {
+    try {
+      const tokens = await getGoogleTokens(code);
+      if (!tokens) {
+        payload = {
+          ...payload,
+          error: "google_not_configured",
+          message:
+            "Integracao Google nao configurada no servidor. Verifique GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI.",
+        };
+      } else {
+        payload = {
+          ok: true,
+          state,
+          message:
+            "Google Calendar autorizado com sucesso. Volte para a tela de Integracoes.",
+          error: null,
+          tokens,
+        };
+      }
+    } catch (error) {
+      payload = {
+        ...payload,
+        error: "token_exchange_failed",
+        message:
+          error?.message ||
+          "Nao foi possivel trocar o codigo por token do Google.",
+      };
+    }
+  }
+
+  const targets = normalizePostMessageOrigins();
+  const safePayloadJson = JSON.stringify(payload).replace(/</g, "\\u003c");
+  const safeTargetsJson = JSON.stringify(targets).replace(/</g, "\\u003c");
+  const statusColor = payload.ok ? "#166534" : "#991b1b";
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.status(payload.ok ? 200 : 400).send(`<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Google Calendar - Integracao</title>
+    <style>
+      body { font-family: Inter, Arial, sans-serif; margin: 0; padding: 24px; background: #f8fafc; color: #0f172a; }
+      .card { max-width: 760px; margin: 0 auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; }
+      h1 { margin: 0 0 10px; font-size: 20px; color: ${statusColor}; }
+      p { margin: 0 0 10px; line-height: 1.45; }
+      pre { background: #f1f5f9; border-radius: 8px; padding: 10px; overflow: auto; font-size: 12px; }
+      .muted { color: #64748b; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>${payload.ok ? "Integracao concluida" : "Falha na integracao"}</h1>
+      <p>${payload.message}</p>
+      <p class="muted">Esta janela pode ser fechada.</p>
+      <pre id="payload"></pre>
+    </div>
+    <script>
+      (function () {
+        var payload = ${safePayloadJson};
+        var targets = ${safeTargetsJson};
+        var pre = document.getElementById("payload");
+        pre.textContent = JSON.stringify(payload, null, 2);
+
+        if (window.opener) {
+          for (var i = 0; i < targets.length; i += 1) {
+            try {
+              window.opener.postMessage(
+                { source: "med-google-oauth", payload: payload },
+                targets[i]
+              );
+            } catch (_error) {}
+          }
+          setTimeout(function () {
+            try { window.close(); } catch (_error) {}
+          }, 300);
+        }
+      })();
+    </script>
+  </body>
+</html>`);
 });
 
 const googleTokenExchange = asyncHandler(async (req, res) => {
@@ -231,6 +359,7 @@ const whatsappResetSession = asyncHandler(async (_req, res) => {
 
 module.exports = {
   googleAuthUrl,
+  googleCallback,
   googleTokenExchange,
   whatsappStatus,
   whatsappQr,

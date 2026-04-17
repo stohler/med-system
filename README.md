@@ -93,7 +93,10 @@ cd frontend && npm test
 
 ### Google Agenda
 - Preencha `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` e `GOOGLE_REDIRECT_URI` no `.env`.
-- Use endpoint/tela de integracoes para obter URL OAuth e trocar code por token.
+- Configure `GOOGLE_REDIRECT_URI` exatamente como:
+  - `https://med-api.stohler.com.br/api/integrations/google/callback` (producao)
+  - `http://localhost:4000/api/integrations/google/callback` (local)
+- Use a tela de Integracoes para gerar a URL OAuth. O callback agora e publico e nao exige JWT.
 
 ### WhatsApp Business
 - Defina:

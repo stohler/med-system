@@ -41,7 +41,7 @@ Secrets de aplicação (backend):
 - `SMTP_FROM`
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
-- `GOOGLE_REDIRECT_URI`
+- `GOOGLE_REDIRECT_URI` (ex: `https://med-api.stohler.com.br/api/integrations/google/callback`)
 - `GOOGLE_CALENDAR_ID`
 - `WHATSAPP_SERVICE_BASE_URL` (ex: `http://api-sandbox.moneri.com.br/v1/whatsapp-service`)
 - `WHATSAPP_SERVICE_TOKEN` (se o servico exigir autenticacao)
