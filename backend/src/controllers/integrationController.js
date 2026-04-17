@@ -80,6 +80,27 @@ function computeOAuthFrontendOrigin(req) {
   return preferredKnown;
 }
 
+function buildIntegrationsUrl(frontendOrigin, payload) {
+  const origin = normalizeOriginValue(frontendOrigin);
+  if (!origin) return "";
+  const params = new URLSearchParams();
+  params.set("google_oauth", payload?.ok ? "connected" : "error");
+  params.set("google_oauth_at", new Date().toISOString());
+  if (payload?.message) {
+    params.set("google_oauth_message", String(payload.message));
+  }
+  return `${origin.replace(/\/+$/, "")}/integrations?${params.toString()}`;
+}
+
+function escapeHtml(text) {
+  return String(text || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 async function proxyWhatsappToExternalService(req, res, { method, pathname, body }) {
   const url = serviceEndpoint(pathname);
   if (!url) {
@@ -192,12 +213,14 @@ const googleCallback = asyncHandler(async (req, res) => {
   const targets = [...new Set([stateFrontendOrigin, ...normalizePostMessageOrigins()].filter(Boolean))];
   const preferredFrontendOrigin =
     targets.find((item) => String(item).startsWith("https://")) || targets[0] || "";
+  const integrationsUrl = buildIntegrationsUrl(preferredFrontendOrigin, payload);
   const safePayloadJson = JSON.stringify(payload).replace(/</g, "\\u003c");
   const safeTargetsJson = JSON.stringify(targets).replace(/</g, "\\u003c");
-  const safePreferredOriginJson = JSON.stringify(preferredFrontendOrigin).replace(
+  const safeIntegrationsUrlJson = JSON.stringify(integrationsUrl).replace(
     /</g,
     "\\u003c"
   );
+  const safeIntegrationsUrlAttr = escapeHtml(integrationsUrl || "#");
   const statusColor = payload.ok ? "#166534" : "#991b1b";
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -221,44 +244,25 @@ const googleCallback = asyncHandler(async (req, res) => {
       <h1>${payload.ok ? "Integracao concluida" : "Falha na integracao"}</h1>
       <p>${payload.message}</p>
       <p class="muted">Esta janela pode ser fechada.</p>
-      <p class="muted"><a id="go-integrations" href="#">Voltar para Integracoes</a></p>
+      <p class="muted"><a id="go-integrations" href="${safeIntegrationsUrlAttr}">Voltar para Integracoes</a></p>
       <pre id="payload"></pre>
     </div>
     <script>
       (function () {
         var payload = ${safePayloadJson};
         var targets = ${safeTargetsJson};
-        var preferredFrontendOrigin = ${safePreferredOriginJson};
+        var integrationsUrl = ${safeIntegrationsUrlJson};
         var pre = document.getElementById("payload");
         var integrationsAnchor = document.getElementById("go-integrations");
         pre.textContent = JSON.stringify(payload, null, 2);
-
-        var buildIntegrationsUrl = function () {
-          if (!preferredFrontendOrigin) return "";
-          var params = new URLSearchParams();
-          params.set("google_oauth", payload.ok ? "connected" : "error");
-          params.set("google_oauth_at", new Date().toISOString());
-          if (payload.message) params.set("google_oauth_message", payload.message);
-          return preferredFrontendOrigin.replace(/\/+$/, "") + "/integrations?" + params.toString();
-        };
-
-        var integrationsUrl = buildIntegrationsUrl();
         var goToIntegrations = function () {
           if (window.opener && integrationsUrl) {
             try {
-              window.opener.location.href = integrationsUrl;
+              window.opener.location.replace(integrationsUrl);
               window.opener.focus();
             } catch (_error) {}
             try {
               window.close();
-              return;
-            } catch (_error) {}
-          }
-          if (window.opener) {
-            try {
-              window.opener.focus();
-              window.close();
-              return;
             } catch (_error) {}
           }
           if (integrationsUrl) {
@@ -269,7 +273,6 @@ const googleCallback = asyncHandler(async (req, res) => {
         };
 
         if (integrationsAnchor) {
-          integrationsAnchor.href = integrationsUrl || "#";
           integrationsAnchor.addEventListener("click", function (event) {
             event.preventDefault();
             goToIntegrations();
@@ -287,6 +290,9 @@ const googleCallback = asyncHandler(async (req, res) => {
           }
           setTimeout(function () {
             try { window.close(); } catch (_error) {}
+            if (!window.closed && integrationsUrl) {
+              window.location.replace(integrationsUrl);
+            }
           }, 300);
           return;
         }

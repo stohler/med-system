@@ -7,7 +7,10 @@ const {
 } = require("../models");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { AppError, NotFoundError } = require("../utils/errors");
-const { createCalendarEvent } = require("../services/googleCalendarService");
+const {
+  createCalendarEvent,
+  updateCalendarEvent,
+} = require("../services/googleCalendarService");
 const { sendAppointmentNotification } = require("../services/notificationService");
 
 const appointmentSchema = z.object({
@@ -171,6 +174,36 @@ const updateAppointment = asyncHandler(async (req, res) => {
     "location",
     "procedureType",
   ]);
+
+  try {
+    const googleTokens = req.body.googleTokens || null;
+    if (googleTokens) {
+      if (appointment.googleEventId) {
+        await updateCalendarEvent({
+          tokens: googleTokens,
+          eventId: appointment.googleEventId,
+          appointment: populated,
+          patient: populated.patient,
+          procedure: populated.procedureType,
+          location: populated.location,
+        });
+      } else {
+        const event = await createCalendarEvent({
+          tokens: googleTokens,
+          appointment: populated,
+          patient: populated.patient,
+          procedure: populated.procedureType,
+          location: populated.location,
+        });
+        if (event?.id) {
+          appointment.googleEventId = event.id;
+          await appointment.save();
+        }
+      }
+    }
+  } catch (_err) {
+    // Nao interrompe fluxo de atendimento
+  }
 
   res.json({ appointment: populated });
 });

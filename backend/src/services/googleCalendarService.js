@@ -51,8 +51,38 @@ async function createCalendarEvent({ tokens, appointment, patient, procedure, lo
   return event.data;
 }
 
+async function updateCalendarEvent({
+  tokens,
+  eventId,
+  appointment,
+  patient,
+  procedure,
+  location,
+}) {
+  const client = getOAuthClient();
+  if (!client || !tokens || !eventId) return null;
+
+  client.setCredentials(tokens);
+  const calendar = google.calendar({ version: "v3", auth: client });
+
+  const event = await calendar.events.update({
+    calendarId: env.googleCalendarId,
+    eventId,
+    requestBody: {
+      summary: `${procedure.name} - ${patient.fullName}`,
+      description: `Paciente: ${patient.fullName}\nDocumento: ${patient.documentNumber || "-"}\nObservacoes: ${appointment.notes || "-"}`,
+      location: `${location.name} - ${location.addressLine1}`,
+      start: { dateTime: appointment.startsAt.toISOString() },
+      end: { dateTime: appointment.endsAt.toISOString() },
+    },
+  });
+
+  return event.data;
+}
+
 module.exports = {
   getGoogleAuthUrl,
   getGoogleTokens,
   createCalendarEvent,
+  updateCalendarEvent,
 };
