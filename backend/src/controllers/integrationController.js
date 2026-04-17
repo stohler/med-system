@@ -38,6 +38,48 @@ function normalizePostMessageOrigins() {
   return [...normalized];
 }
 
+function parseStatePayload(rawState) {
+  const fallback = { flow: String(rawState || "clinic-system"), frontendOrigin: "" };
+  const stateValue = String(rawState || "").trim();
+  if (!stateValue) return fallback;
+  try {
+    const decoded = Buffer.from(stateValue, "base64url").toString("utf8");
+    const parsed = JSON.parse(decoded);
+    if (!parsed || typeof parsed !== "object") return fallback;
+    const flow = String(parsed.flow || "clinic-system");
+    const frontendOrigin = String(parsed.frontendOrigin || "").trim();
+    return { flow, frontendOrigin };
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+function serializeStatePayload(payload) {
+  const safe = {
+    flow: String(payload?.flow || "clinic-system"),
+    frontendOrigin: String(payload?.frontendOrigin || "").trim(),
+  };
+  return Buffer.from(JSON.stringify(safe), "utf8").toString("base64url");
+}
+
+function normalizeOriginValue(origin) {
+  const raw = String(origin || "").trim().replace(/\/+$/, "");
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return `https://${raw}`;
+}
+
+function computeOAuthFrontendOrigin(req) {
+  const requestOrigin = normalizeOriginValue(req.headers.origin || "");
+  if (requestOrigin) return requestOrigin;
+  const knownOrigins = normalizePostMessageOrigins();
+  const preferredKnown =
+    knownOrigins.find((item) => String(item).startsWith("https://")) ||
+    knownOrigins[0] ||
+    "";
+  return preferredKnown;
+}
+
 async function proxyWhatsappToExternalService(req, res, { method, pathname, body }) {
   const url = serviceEndpoint(pathname);
   if (!url) {
@@ -78,13 +120,21 @@ async function proxyWhatsappToExternalService(req, res, { method, pathname, body
   }
 }
 
-const googleAuthUrl = asyncHandler(async (_req, res) => {
-  const url = getGoogleAuthUrl("clinic-system");
+const googleAuthUrl = asyncHandler(async (req, res) => {
+  const frontendOrigin = computeOAuthFrontendOrigin(req);
+  const oauthState = serializeStatePayload({
+    flow: "clinic-system",
+    frontendOrigin,
+  });
+  const url = getGoogleAuthUrl(oauthState);
   res.json({ url });
 });
 
 const googleCallback = asyncHandler(async (req, res) => {
-  const state = String(req.query.state || "");
+  const rawState = String(req.query.state || "");
+  const parsedState = parseStatePayload(rawState);
+  const state = parsedState.flow;
+  const stateFrontendOrigin = normalizeOriginValue(parsedState.frontendOrigin);
   const oauthError = String(req.query.error || "");
   const code = String(req.query.code || "");
 
@@ -139,7 +189,7 @@ const googleCallback = asyncHandler(async (req, res) => {
     }
   }
 
-  const targets = normalizePostMessageOrigins();
+  const targets = [...new Set([stateFrontendOrigin, ...normalizePostMessageOrigins()].filter(Boolean))];
   const preferredFrontendOrigin =
     targets.find((item) => String(item).startsWith("https://")) || targets[0] || "";
   const safePayloadJson = JSON.stringify(payload).replace(/</g, "\\u003c");

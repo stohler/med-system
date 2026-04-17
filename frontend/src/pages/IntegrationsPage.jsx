@@ -92,7 +92,9 @@ export function IntegrationsPage() {
     setError("");
     setSuccess("");
     try {
-      const { data } = await api.get("/integrations/google/url");
+      const { data } = await api.get("/integrations/google/url", {
+        params: { state: `clinic-system|origin:${window.location.origin}` },
+      });
       setGoogleUrl(data.url || "");
     } catch (err) {
       setError(err?.response?.data?.message || "Falha ao obter URL Google");
