@@ -492,9 +492,6 @@ export function AppointmentsPage() {
                 ? "Ativo"
                 : "Inativo"}
           </span>
-          <button type="button" className="btn-ghost" onClick={loadGoogleSyncStatus}>
-            Atualizar sync Google
-          </button>
           <button type="button" className="btn-ghost" onClick={previousWeek}>
             Semana anterior
           </button>
