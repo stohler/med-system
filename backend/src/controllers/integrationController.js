@@ -243,8 +243,37 @@ const googleCallback = asyncHandler(async (req, res) => {
         };
 
         var integrationsUrl = buildIntegrationsUrl();
-        if (integrationsAnchor && integrationsUrl) {
-          integrationsAnchor.href = integrationsUrl;
+        var goToIntegrations = function () {
+          if (window.opener && integrationsUrl) {
+            try {
+              window.opener.location.href = integrationsUrl;
+              window.opener.focus();
+            } catch (_error) {}
+            try {
+              window.close();
+              return;
+            } catch (_error) {}
+          }
+          if (window.opener) {
+            try {
+              window.opener.focus();
+              window.close();
+              return;
+            } catch (_error) {}
+          }
+          if (integrationsUrl) {
+            window.location.replace(integrationsUrl);
+            return;
+          }
+          window.location.replace("/");
+        };
+
+        if (integrationsAnchor) {
+          integrationsAnchor.href = integrationsUrl || "#";
+          integrationsAnchor.addEventListener("click", function (event) {
+            event.preventDefault();
+            goToIntegrations();
+          });
         }
 
         if (window.opener) {
