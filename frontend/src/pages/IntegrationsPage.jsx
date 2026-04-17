@@ -1,9 +1,52 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 
+const GOOGLE_TOKENS_STORAGE_KEY = "google_calendar_tokens";
+
+function parseGoogleTokens(rawValue) {
+  if (!rawValue) return null;
+  try {
+    return JSON.parse(rawValue);
+  } catch (_error) {
+    return null;
+  }
+}
+
+function getGoogleConnectionStatus(tokensText) {
+  const tokens = parseGoogleTokens(tokensText);
+  if (!tokens) return { connected: false, label: "Desconectado", details: "" };
+
+  const expiresAtMs = Number(tokens.expiry_date || 0);
+  const hasRefreshToken = Boolean(tokens.refresh_token);
+  const hasAccessToken = Boolean(tokens.access_token);
+  const isExpired = expiresAtMs > 0 ? Date.now() >= expiresAtMs : false;
+
+  if ((hasRefreshToken || hasAccessToken) && !isExpired) {
+    const details =
+      expiresAtMs > 0
+        ? `Token expira em ${new Date(expiresAtMs).toLocaleString("pt-BR")}`
+        : hasRefreshToken
+          ? "Token com refresh ativo."
+          : "";
+    return { connected: true, label: "Conectado", details };
+  }
+
+  if (hasRefreshToken && isExpired) {
+    return {
+      connected: true,
+      label: "Conectado",
+      details: "Access token expirado, mas refresh token disponivel.",
+    };
+  }
+
+  return { connected: false, label: "Desconectado", details: "Token invalido ou expirado." };
+}
+
 export function IntegrationsPage() {
   const [googleUrl, setGoogleUrl] = useState("");
-  const [googleTokens, setGoogleTokens] = useState("");
+  const [googleTokens, setGoogleTokens] = useState(
+    () => localStorage.getItem(GOOGLE_TOKENS_STORAGE_KEY) || ""
+  );
   const [whatsapp, setWhatsapp] = useState(null);
   const [qr, setQr] = useState("");
   const [error, setError] = useState("");
@@ -14,7 +57,6 @@ export function IntegrationsPage() {
   const loadGoogle = async () => {
     setError("");
     setSuccess("");
-    setGoogleTokens("");
     try {
       const { data } = await api.get("/integrations/google/url");
       setGoogleUrl(data.url || "");
@@ -112,6 +154,12 @@ export function IntegrationsPage() {
     }
   };
 
+  const clearGoogleConnection = () => {
+    localStorage.removeItem(GOOGLE_TOKENS_STORAGE_KEY);
+    setGoogleTokens("");
+    setSuccess("Vinculo do Google removido nesta sessao.");
+  };
+
   useEffect(() => {
     loadWhatsappStatus().catch(() => null);
   }, []);
@@ -136,6 +184,7 @@ export function IntegrationsPage() {
       if (payload.ok && payload.tokens) {
         const serialized = JSON.stringify(payload.tokens, null, 2);
         setGoogleTokens(serialized);
+        localStorage.setItem(GOOGLE_TOKENS_STORAGE_KEY, serialized);
         setSuccess(
           "Google Calendar vinculado. Tokens recebidos no frontend para uso nas chamadas de agendamento."
         );
@@ -148,6 +197,13 @@ export function IntegrationsPage() {
     window.addEventListener("message", handleGoogleCallbackMessage);
     return () => window.removeEventListener("message", handleGoogleCallbackMessage);
   }, []);
+
+  useEffect(() => {
+    if (!googleTokens) return;
+    localStorage.setItem(GOOGLE_TOKENS_STORAGE_KEY, googleTokens);
+  }, [googleTokens]);
+
+  const googleStatus = getGoogleConnectionStatus(googleTokens);
 
   useEffect(() => {
     if (!whatsapp || whatsapp.ready) return undefined;
@@ -163,6 +219,10 @@ export function IntegrationsPage() {
 
       <div className="card">
         <h3>Google Agenda</h3>
+        <p className={googleStatus.connected ? "success" : "error"}>
+          Status: {googleStatus.label}
+        </p>
+        {googleStatus.details ? <p className="muted">{googleStatus.details}</p> : null}
         <button type="button" onClick={loadGoogle}>Gerar URL OAuth</button>
         {googleUrl ? (
           <p>
@@ -177,6 +237,9 @@ export function IntegrationsPage() {
             </label>
             <button type="button" className="btn-ghost" onClick={copyGoogleTokens}>
               Copiar tokens
+            </button>
+            <button type="button" className="btn-ghost" onClick={clearGoogleConnection}>
+              Desvincular Google
             </button>
           </div>
         ) : null}

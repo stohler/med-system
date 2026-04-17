@@ -265,6 +265,29 @@ button:disabled {
   margin: 0;
 }
 
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-chip-connected {
+  background: #ecfdf5;
+  border-color: #10b981;
+  color: #065f46;
+}
+
+.status-chip-disconnected {
+  background: #fef2f2;
+  border-color: #f87171;
+  color: #991b1b;
+}
+
 .muted {
   margin: 0;
   color: #64748b;
