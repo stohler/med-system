@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 
 const GOOGLE_TOKENS_STORAGE_KEY = "google_calendar_tokens";
+const GOOGLE_CONNECTION_META_KEY = "google_calendar_connection_meta";
 
 function parseGoogleTokens(rawValue) {
   if (!rawValue) return null;
@@ -12,8 +13,38 @@ function parseGoogleTokens(rawValue) {
   }
 }
 
-function getGoogleConnectionStatus(tokensText) {
+function parseGoogleConnectionMeta(rawValue) {
+  if (!rawValue) return null;
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      connected: Boolean(parsed.connected),
+      connectedAt: parsed.connectedAt ? String(parsed.connectedAt) : "",
+      source: parsed.source ? String(parsed.source) : "",
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function getGoogleConnectionStatus(tokensText, connectionMeta) {
   const tokens = parseGoogleTokens(tokensText);
+  const fallbackConnected = Boolean(connectionMeta?.connected);
+  const fallbackConnectedAt = connectionMeta?.connectedAt
+    ? new Date(connectionMeta.connectedAt).toLocaleString("pt-BR")
+    : "";
+
+  if (!tokens && fallbackConnected) {
+    return {
+      connected: true,
+      label: "Conectado",
+      details: fallbackConnectedAt
+        ? `Conexao concluida em ${fallbackConnectedAt}`
+        : "Conexao OAuth concluida.",
+    };
+  }
+
   if (!tokens) return { connected: false, label: "Desconectado", details: "" };
 
   const expiresAtMs = Number(tokens.expiry_date || 0);
@@ -46,6 +77,9 @@ export function IntegrationsPage() {
   const [googleUrl, setGoogleUrl] = useState("");
   const [googleTokens, setGoogleTokens] = useState(
     () => localStorage.getItem(GOOGLE_TOKENS_STORAGE_KEY) || ""
+  );
+  const [googleConnectionMeta, setGoogleConnectionMeta] = useState(() =>
+    parseGoogleConnectionMeta(localStorage.getItem(GOOGLE_CONNECTION_META_KEY))
   );
   const [whatsapp, setWhatsapp] = useState(null);
   const [qr, setQr] = useState("");
@@ -156,12 +190,52 @@ export function IntegrationsPage() {
 
   const clearGoogleConnection = () => {
     localStorage.removeItem(GOOGLE_TOKENS_STORAGE_KEY);
+    localStorage.removeItem(GOOGLE_CONNECTION_META_KEY);
     setGoogleTokens("");
+    setGoogleConnectionMeta(null);
     setSuccess("Vinculo do Google removido nesta sessao.");
+  };
+
+  const openGoogleConnection = () => {
+    if (!googleUrl) {
+      setError("Gere a URL OAuth antes de conectar.");
+      return;
+    }
+    const popup = window.open(googleUrl, "google-calendar-oauth", "width=640,height=760");
+    if (!popup) {
+      window.location.href = googleUrl;
+      return;
+    }
+    popup.focus();
   };
 
   useEffect(() => {
     loadWhatsappStatus().catch(() => null);
+  }, []);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const oauthResult = searchParams.get("google_oauth");
+    if (!oauthResult) return;
+
+    const oauthMessage = searchParams.get("google_oauth_message") || "";
+    const oauthAt = searchParams.get("google_oauth_at") || new Date().toISOString();
+    if (oauthResult === "connected") {
+      const nextMeta = {
+        connected: true,
+        connectedAt: oauthAt,
+        source: "callback_redirect",
+      };
+      setGoogleConnectionMeta(nextMeta);
+      localStorage.setItem(GOOGLE_CONNECTION_META_KEY, JSON.stringify(nextMeta));
+      setSuccess(oauthMessage || "Google Calendar vinculado com sucesso.");
+      setError("");
+    } else {
+      setError(oauthMessage || "Falha ao concluir callback do Google Calendar.");
+    }
+
+    const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+    window.history.replaceState({}, document.title, cleanUrl);
   }, []);
 
   useEffect(() => {
@@ -185,6 +259,13 @@ export function IntegrationsPage() {
         const serialized = JSON.stringify(payload.tokens, null, 2);
         setGoogleTokens(serialized);
         localStorage.setItem(GOOGLE_TOKENS_STORAGE_KEY, serialized);
+        const nextMeta = {
+          connected: true,
+          connectedAt: new Date().toISOString(),
+          source: "post_message",
+        };
+        setGoogleConnectionMeta(nextMeta);
+        localStorage.setItem(GOOGLE_CONNECTION_META_KEY, JSON.stringify(nextMeta));
         setSuccess(
           "Google Calendar vinculado. Tokens recebidos no frontend para uso nas chamadas de agendamento."
         );
@@ -203,7 +284,7 @@ export function IntegrationsPage() {
     localStorage.setItem(GOOGLE_TOKENS_STORAGE_KEY, googleTokens);
   }, [googleTokens]);
 
-  const googleStatus = getGoogleConnectionStatus(googleTokens);
+  const googleStatus = getGoogleConnectionStatus(googleTokens, googleConnectionMeta);
 
   useEffect(() => {
     if (!whatsapp || whatsapp.ready) return undefined;
@@ -225,9 +306,9 @@ export function IntegrationsPage() {
         {googleStatus.details ? <p className="muted">{googleStatus.details}</p> : null}
         <button type="button" onClick={loadGoogle}>Gerar URL OAuth</button>
         {googleUrl ? (
-          <p>
-            <a href={googleUrl} target="_blank" rel="noreferrer">Conectar Google Calendar</a>
-          </p>
+          <button type="button" className="btn-ghost" onClick={openGoogleConnection}>
+            Conectar Google Calendar
+          </button>
         ) : null}
         {googleTokens ? (
           <div className="form-grid">

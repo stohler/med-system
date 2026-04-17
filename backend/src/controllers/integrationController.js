@@ -140,8 +140,14 @@ const googleCallback = asyncHandler(async (req, res) => {
   }
 
   const targets = normalizePostMessageOrigins();
+  const preferredFrontendOrigin =
+    targets.find((item) => String(item).startsWith("https://")) || targets[0] || "";
   const safePayloadJson = JSON.stringify(payload).replace(/</g, "\\u003c");
   const safeTargetsJson = JSON.stringify(targets).replace(/</g, "\\u003c");
+  const safePreferredOriginJson = JSON.stringify(preferredFrontendOrigin).replace(
+    /</g,
+    "\\u003c"
+  );
   const statusColor = payload.ok ? "#166534" : "#991b1b";
 
   res.setHeader("Content-Type", "text/html; charset=utf-8");
@@ -165,14 +171,31 @@ const googleCallback = asyncHandler(async (req, res) => {
       <h1>${payload.ok ? "Integracao concluida" : "Falha na integracao"}</h1>
       <p>${payload.message}</p>
       <p class="muted">Esta janela pode ser fechada.</p>
+      <p class="muted"><a id="go-integrations" href="#">Voltar para Integracoes</a></p>
       <pre id="payload"></pre>
     </div>
     <script>
       (function () {
         var payload = ${safePayloadJson};
         var targets = ${safeTargetsJson};
+        var preferredFrontendOrigin = ${safePreferredOriginJson};
         var pre = document.getElementById("payload");
+        var integrationsAnchor = document.getElementById("go-integrations");
         pre.textContent = JSON.stringify(payload, null, 2);
+
+        var buildIntegrationsUrl = function () {
+          if (!preferredFrontendOrigin) return "";
+          var params = new URLSearchParams();
+          params.set("google_oauth", payload.ok ? "connected" : "error");
+          params.set("google_oauth_at", new Date().toISOString());
+          if (payload.message) params.set("google_oauth_message", payload.message);
+          return preferredFrontendOrigin.replace(/\/+$/, "") + "/integrations?" + params.toString();
+        };
+
+        var integrationsUrl = buildIntegrationsUrl();
+        if (integrationsAnchor && integrationsUrl) {
+          integrationsAnchor.href = integrationsUrl;
+        }
 
         if (window.opener) {
           for (var i = 0; i < targets.length; i += 1) {
@@ -186,6 +209,13 @@ const googleCallback = asyncHandler(async (req, res) => {
           setTimeout(function () {
             try { window.close(); } catch (_error) {}
           }, 300);
+          return;
+        }
+
+        if (integrationsUrl) {
+          setTimeout(function () {
+            window.location.replace(integrationsUrl);
+          }, 1200);
         }
       })();
     </script>
