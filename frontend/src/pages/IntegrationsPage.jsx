@@ -1,86 +1,14 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 
-const GOOGLE_TOKENS_STORAGE_KEY = "google_calendar_tokens";
-const GOOGLE_CONNECTION_META_KEY = "google_calendar_connection_meta";
-
-function parseGoogleTokens(rawValue) {
-  if (!rawValue) return null;
-  try {
-    return JSON.parse(rawValue);
-  } catch (_error) {
-    return null;
-  }
-}
-
-function parseGoogleConnectionMeta(rawValue) {
-  if (!rawValue) return null;
-  try {
-    const parsed = JSON.parse(rawValue);
-    if (!parsed || typeof parsed !== "object") return null;
-    return {
-      connected: Boolean(parsed.connected),
-      connectedAt: parsed.connectedAt ? String(parsed.connectedAt) : "",
-      source: parsed.source ? String(parsed.source) : "",
-    };
-  } catch (_error) {
-    return null;
-  }
-}
-
-function getGoogleConnectionStatus(tokensText, connectionMeta) {
-  const tokens = parseGoogleTokens(tokensText);
-  const fallbackConnected = Boolean(connectionMeta?.connected);
-  const fallbackConnectedAt = connectionMeta?.connectedAt
-    ? new Date(connectionMeta.connectedAt).toLocaleString("pt-BR")
-    : "";
-
-  if (!tokens && fallbackConnected) {
-    return {
-      connected: true,
-      label: "Conectado",
-      details: fallbackConnectedAt
-        ? `Conexao concluida em ${fallbackConnectedAt}`
-        : "Conexao OAuth concluida.",
-    };
-  }
-
-  if (!tokens) return { connected: false, label: "Desconectado", details: "" };
-
-  const expiresAtMs = Number(tokens.expiry_date || 0);
-  const hasRefreshToken = Boolean(tokens.refresh_token);
-  const hasAccessToken = Boolean(tokens.access_token);
-  const isExpired = expiresAtMs > 0 ? Date.now() >= expiresAtMs : false;
-
-  if ((hasRefreshToken || hasAccessToken) && !isExpired) {
-    const details =
-      expiresAtMs > 0
-        ? `Token expira em ${new Date(expiresAtMs).toLocaleString("pt-BR")}`
-        : hasRefreshToken
-          ? "Token com refresh ativo."
-          : "";
-    return { connected: true, label: "Conectado", details };
-  }
-
-  if (hasRefreshToken && isExpired) {
-    return {
-      connected: true,
-      label: "Conectado",
-      details: "Access token expirado, mas refresh token disponivel.",
-    };
-  }
-
-  return { connected: false, label: "Desconectado", details: "Token invalido ou expirado." };
-}
-
 export function IntegrationsPage() {
   const [googleUrl, setGoogleUrl] = useState("");
-  const [googleTokens, setGoogleTokens] = useState(
-    () => localStorage.getItem(GOOGLE_TOKENS_STORAGE_KEY) || ""
-  );
-  const [googleConnectionMeta, setGoogleConnectionMeta] = useState(() =>
-    parseGoogleConnectionMeta(localStorage.getItem(GOOGLE_CONNECTION_META_KEY))
-  );
+  const [googleStatus, setGoogleStatus] = useState({
+    connected: false,
+    connectedAt: "",
+    hasRefreshToken: false,
+    expiresAt: "",
+  });
   const [whatsapp, setWhatsapp] = useState(null);
   const [qr, setQr] = useState("");
   const [error, setError] = useState("");
@@ -92,9 +20,7 @@ export function IntegrationsPage() {
     setError("");
     setSuccess("");
     try {
-      const { data } = await api.get("/integrations/google/url", {
-        params: { state: `clinic-system|origin:${window.location.origin}` },
-      });
+      const { data } = await api.get("/integrations/google/url");
       setGoogleUrl(data.url || "");
     } catch (err) {
       setError(err?.response?.data?.message || "Falha ao obter URL Google");
@@ -180,22 +106,39 @@ export function IntegrationsPage() {
     }
   };
 
-  const copyGoogleTokens = async () => {
-    if (!googleTokens) return;
+  const loadGoogleStatus = async () => {
+    setError("");
+    setSuccess("");
     try {
-      await navigator.clipboard.writeText(googleTokens);
-      setSuccess("Tokens do Google copiados para a area de transferencia.");
-    } catch (_error) {
-      setError("Nao foi possivel copiar automaticamente. Copie manualmente o texto.");
+      const { data } = await api.get("/integrations/google/status");
+      setGoogleStatus({
+        connected: Boolean(data?.connected),
+        connectedAt: data?.connectedAt || "",
+        hasRefreshToken: Boolean(data?.hasRefreshToken),
+        expiresAt: data?.expiresAt || "",
+      });
+    } catch (err) {
+      setError(err?.response?.data?.message || "Falha ao obter status do Google");
     }
   };
 
   const clearGoogleConnection = () => {
-    localStorage.removeItem(GOOGLE_TOKENS_STORAGE_KEY);
-    localStorage.removeItem(GOOGLE_CONNECTION_META_KEY);
-    setGoogleTokens("");
-    setGoogleConnectionMeta(null);
-    setSuccess("Vinculo do Google removido nesta sessao.");
+    setError("");
+    setSuccess("");
+    api
+      .post("/integrations/google/disconnect")
+      .then((response) => {
+        setGoogleStatus({
+          connected: false,
+          connectedAt: "",
+          hasRefreshToken: false,
+          expiresAt: "",
+        });
+        setSuccess(response.data?.message || "Vinculo do Google removido com sucesso.");
+      })
+      .catch((err) => {
+        setError(err?.response?.data?.message || "Falha ao desvincular Google.");
+      });
   };
 
   const openGoogleConnection = () => {
@@ -212,6 +155,7 @@ export function IntegrationsPage() {
   };
 
   useEffect(() => {
+    loadGoogleStatus().catch(() => null);
     loadWhatsappStatus().catch(() => null);
   }, []);
 
@@ -223,17 +167,17 @@ export function IntegrationsPage() {
     const oauthMessage = searchParams.get("google_oauth_message") || "";
     const oauthAt = searchParams.get("google_oauth_at") || new Date().toISOString();
     if (oauthResult === "connected") {
-      const nextMeta = {
-        connected: true,
-        connectedAt: oauthAt,
-        source: "callback_redirect",
-      };
-      setGoogleConnectionMeta(nextMeta);
-      localStorage.setItem(GOOGLE_CONNECTION_META_KEY, JSON.stringify(nextMeta));
       setSuccess(oauthMessage || "Google Calendar vinculado com sucesso.");
       setError("");
+      setGoogleStatus((prev) => ({
+        ...prev,
+        connected: true,
+        connectedAt: oauthAt,
+      }));
+      loadGoogleStatus().catch(() => null);
     } else {
       setError(oauthMessage || "Falha ao concluir callback do Google Calendar.");
+      loadGoogleStatus().catch(() => null);
     }
 
     const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
@@ -257,21 +201,12 @@ export function IntegrationsPage() {
       if (allowedOrigins.size > 0 && !allowedOrigins.has(event.origin)) return;
       if (data.source !== "med-google-oauth") return;
       const payload = data.payload || {};
-      if (payload.ok && payload.tokens) {
-        const serialized = JSON.stringify(payload.tokens, null, 2);
-        setGoogleTokens(serialized);
-        localStorage.setItem(GOOGLE_TOKENS_STORAGE_KEY, serialized);
-        const nextMeta = {
-          connected: true,
-          connectedAt: new Date().toISOString(),
-          source: "post_message",
-        };
-        setGoogleConnectionMeta(nextMeta);
-        localStorage.setItem(GOOGLE_CONNECTION_META_KEY, JSON.stringify(nextMeta));
+      if (payload.ok) {
         setSuccess(
-          "Google Calendar vinculado. Tokens recebidos no frontend para uso nas chamadas de agendamento."
+          "Google Calendar vinculado com sucesso."
         );
         setError("");
+        loadGoogleStatus().catch(() => null);
         return;
       }
       setError(payload.message || "Falha ao concluir callback do Google Calendar.");
@@ -280,13 +215,6 @@ export function IntegrationsPage() {
     window.addEventListener("message", handleGoogleCallbackMessage);
     return () => window.removeEventListener("message", handleGoogleCallbackMessage);
   }, []);
-
-  useEffect(() => {
-    if (!googleTokens) return;
-    localStorage.setItem(GOOGLE_TOKENS_STORAGE_KEY, googleTokens);
-  }, [googleTokens]);
-
-  const googleStatus = getGoogleConnectionStatus(googleTokens, googleConnectionMeta);
 
   useEffect(() => {
     if (!whatsapp || whatsapp.ready) return undefined;
@@ -303,28 +231,33 @@ export function IntegrationsPage() {
       <div className="card">
         <h3>Google Agenda</h3>
         <p className={googleStatus.connected ? "success" : "error"}>
-          Status: {googleStatus.label}
+          Status: {googleStatus.connected ? "Conectado" : "Desconectado"}
         </p>
-        {googleStatus.details ? <p className="muted">{googleStatus.details}</p> : null}
-        <button type="button" onClick={loadGoogle}>Gerar URL OAuth</button>
+        {googleStatus.connectedAt ? (
+          <p className="muted">
+            Conectado em: {new Date(googleStatus.connectedAt).toLocaleString("pt-BR")}
+          </p>
+        ) : null}
+        {googleStatus.expiresAt ? (
+          <p className="muted">
+            Expira em: {new Date(googleStatus.expiresAt).toLocaleString("pt-BR")}
+          </p>
+        ) : null}
+        <div className="inline-actions">
+          <button type="button" onClick={loadGoogle}>Gerar URL OAuth</button>
+          <button type="button" className="btn-ghost" onClick={loadGoogleStatus}>
+            Atualizar status Google
+          </button>
+        </div>
         {googleUrl ? (
           <button type="button" className="btn-ghost" onClick={openGoogleConnection}>
             Conectar Google Calendar
           </button>
         ) : null}
-        {googleTokens ? (
-          <div className="form-grid">
-            <label>
-              Tokens recebidos no callback
-              <textarea value={googleTokens} readOnly />
-            </label>
-            <button type="button" className="btn-ghost" onClick={copyGoogleTokens}>
-              Copiar tokens
-            </button>
-            <button type="button" className="btn-ghost" onClick={clearGoogleConnection}>
-              Desvincular Google
-            </button>
-          </div>
+        {googleStatus.connected ? (
+          <button type="button" className="btn-ghost" onClick={clearGoogleConnection}>
+            Desvincular Google
+          </button>
         ) : null}
       </div>
 

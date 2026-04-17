@@ -31,19 +31,6 @@ const emptyForm = {
   notes: "",
 };
 
-const GOOGLE_TOKENS_STORAGE_KEY = "google_calendar_tokens";
-
-function readGoogleTokensFromStorage() {
-  const raw = localStorage.getItem(GOOGLE_TOKENS_STORAGE_KEY);
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : null;
-  } catch (_error) {
-    return null;
-  }
-}
-
 function patientLabel(patient) {
   const birth = patient.birthDate ? dayjs(patient.birthDate).format("DD/MM/YYYY") : "--";
   return `${patient.fullName} - ${birth}`;
@@ -324,10 +311,6 @@ export function AppointmentsPage() {
         endsAt: new Date(form.endsAt).toISOString(),
         notes: form.notes,
       };
-      const googleTokens = readGoogleTokensFromStorage();
-      if (googleTokens) {
-        payload.googleTokens = googleTokens;
-      }
 
       if (form.editingId) {
         await api.put(`/appointments/${form.editingId}`, payload);

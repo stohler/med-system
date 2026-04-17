@@ -9,6 +9,7 @@ const { asyncHandler } = require("../utils/asyncHandler");
 const { AppError, NotFoundError } = require("../utils/errors");
 const {
   createCalendarEvent,
+  getStoredGoogleTokensForUser,
   updateCalendarEvent,
 } = require("../services/googleCalendarService");
 const { sendAppointmentNotification } = require("../services/notificationService");
@@ -94,8 +95,12 @@ const createAppointment = asyncHandler(async (req, res) => {
 
   // Integracao com Google Calendar e notificacoes ficam "best effort".
   try {
+    const googleTokens = getStoredGoogleTokensForUser(req.user);
+    if (!googleTokens) {
+      throw new Error("google_not_connected");
+    }
     const event = await createCalendarEvent({
-      tokens: req.body.googleTokens || null,
+      tokens: googleTokens,
       appointment: populated,
       patient: populated.patient,
       procedure: populated.procedureType,
@@ -176,7 +181,7 @@ const updateAppointment = asyncHandler(async (req, res) => {
   ]);
 
   try {
-    const googleTokens = req.body.googleTokens || null;
+    const googleTokens = getStoredGoogleTokensForUser(req.user);
     if (googleTokens) {
       if (appointment.googleEventId) {
         await updateCalendarEvent({

@@ -1,9 +1,15 @@
 const { asyncHandler } = require("../utils/asyncHandler");
 const axios = require("axios");
+const crypto = require("crypto");
 const { env } = require("../config/env");
+const { User } = require("../models");
 const {
   getGoogleAuthUrl,
   getGoogleTokens,
+  saveGoogleTokensForUser,
+  getStoredGoogleTokensForUser,
+  getGoogleConnectionStatusForUser,
+  clearGoogleTokensForUser,
 } = require("../services/googleCalendarService");
 const {
   getWhatsappStatus,
@@ -38,17 +44,55 @@ function normalizePostMessageOrigins() {
   return [...normalized];
 }
 
+function signStateFragment(encodedPayload) {
+  return crypto
+    .createHmac("sha256", String(env.jwtSecret || "dev-secret-change-me"))
+    .update(String(encodedPayload))
+    .digest("base64url");
+}
+
 function parseStatePayload(rawState) {
-  const fallback = { flow: String(rawState || "clinic-system"), frontendOrigin: "" };
+  const fallback = {
+    flow: String(rawState || "clinic-system"),
+    frontendOrigin: "",
+    userId: "",
+    trusted: false,
+  };
   const stateValue = String(rawState || "").trim();
   if (!stateValue) return fallback;
+
+  const parts = stateValue.split(".");
+  if (parts.length === 2 && parts[0] && parts[1]) {
+    const [encodedPayload, signature] = parts;
+    const expectedSignature = signStateFragment(encodedPayload);
+    if (signature !== expectedSignature) {
+      return fallback;
+    }
+    try {
+      const decoded = Buffer.from(encodedPayload, "base64url").toString("utf8");
+      const parsed = JSON.parse(decoded);
+      if (!parsed || typeof parsed !== "object") return fallback;
+      return {
+        flow: String(parsed.flow || "clinic-system"),
+        frontendOrigin: String(parsed.frontendOrigin || "").trim(),
+        userId: String(parsed.userId || "").trim(),
+        trusted: true,
+      };
+    } catch (_error) {
+      return fallback;
+    }
+  }
+
   try {
     const decoded = Buffer.from(stateValue, "base64url").toString("utf8");
     const parsed = JSON.parse(decoded);
     if (!parsed || typeof parsed !== "object") return fallback;
-    const flow = String(parsed.flow || "clinic-system");
-    const frontendOrigin = String(parsed.frontendOrigin || "").trim();
-    return { flow, frontendOrigin };
+    return {
+      flow: String(parsed.flow || "clinic-system"),
+      frontendOrigin: String(parsed.frontendOrigin || "").trim(),
+      userId: "",
+      trusted: false,
+    };
   } catch (_error) {
     return fallback;
   }
@@ -58,8 +102,14 @@ function serializeStatePayload(payload) {
   const safe = {
     flow: String(payload?.flow || "clinic-system"),
     frontendOrigin: String(payload?.frontendOrigin || "").trim(),
+    userId: String(payload?.userId || "").trim(),
+    issuedAt: Date.now(),
   };
-  return Buffer.from(JSON.stringify(safe), "utf8").toString("base64url");
+  const encodedPayload = Buffer.from(JSON.stringify(safe), "utf8").toString(
+    "base64url"
+  );
+  const signature = signStateFragment(encodedPayload);
+  return `${encodedPayload}.${signature}`;
 }
 
 function normalizeOriginValue(origin) {
@@ -146,6 +196,7 @@ const googleAuthUrl = asyncHandler(async (req, res) => {
   const oauthState = serializeStatePayload({
     flow: "clinic-system",
     frontendOrigin,
+    userId: req.userId || req.user?._id?.toString?.() || "",
   });
   const url = getGoogleAuthUrl(oauthState);
   res.json({ url });
@@ -155,6 +206,7 @@ const googleCallback = asyncHandler(async (req, res) => {
   const rawState = String(req.query.state || "");
   const parsedState = parseStatePayload(rawState);
   const state = parsedState.flow;
+  const stateUserId = String(parsedState.userId || "");
   const stateFrontendOrigin = normalizeOriginValue(parsedState.frontendOrigin);
   const oauthError = String(req.query.error || "");
   const code = String(req.query.code || "");
@@ -193,11 +245,25 @@ const googleCallback = asyncHandler(async (req, res) => {
         payload = {
           ok: true,
           state,
-          message:
-            "Google Calendar autorizado com sucesso. Volte para a tela de Integracoes.",
+          message: "Google Calendar autorizado com sucesso.",
           error: null,
-          tokens,
+          tokens: null,
         };
+
+        if (stateUserId && parsedState.trusted) {
+          const user = await User.findById(stateUserId);
+          if (user && user.active) {
+            await saveGoogleTokensForUser(user, tokens);
+            payload.message =
+              "Google Calendar autorizado e vinculado ao usuario com sucesso.";
+          } else {
+            payload.message =
+              "Google autorizado, mas nao foi possivel vincular ao usuario informado.";
+          }
+        } else {
+          payload.message =
+            "Google autorizado, mas sem vinculo de usuario confiavel no callback.";
+        }
       }
     } catch (error) {
       payload = {
@@ -311,7 +377,24 @@ const googleCallback = asyncHandler(async (req, res) => {
 const googleTokenExchange = asyncHandler(async (req, res) => {
   const { code } = req.body;
   const tokens = await getGoogleTokens(code);
-  res.json({ tokens });
+  if (!tokens) {
+    return res.status(400).json({
+      error: true,
+      message: "Integracao Google nao configurada no servidor.",
+      details: null,
+    });
+  }
+  await saveGoogleTokensForUser(req.user, tokens);
+  return res.json({ status: getGoogleConnectionStatusForUser(req.user) });
+});
+
+const googleStatus = asyncHandler(async (req, res) => {
+  return res.json(getGoogleConnectionStatusForUser(req.user));
+});
+
+const googleDisconnect = asyncHandler(async (req, res) => {
+  await clearGoogleTokensForUser(req.user);
+  return res.json(getGoogleConnectionStatusForUser(req.user));
 });
 
 const whatsappStatus = asyncHandler(async (_req, res) => {
@@ -476,6 +559,8 @@ module.exports = {
   googleAuthUrl,
   googleCallback,
   googleTokenExchange,
+  googleStatus,
+  googleDisconnect,
   whatsappStatus,
   whatsappQr,
   whatsappTestMessage,

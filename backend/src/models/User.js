@@ -13,6 +13,9 @@ const userSchema = new mongoose.Schema(
     crm: { type: String, default: "" },
     active: { type: Boolean, default: true },
     lastLoginAt: { type: Date },
+    googleCalendarTokensEncrypted: { type: String, default: "" },
+    googleCalendarConnectedAt: { type: Date, default: null },
+    googleCalendarTokenExpiryAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
