@@ -107,6 +107,12 @@ export function AppointmentsPage() {
   const [locations, setLocations] = useState([]);
   const [procedures, setProcedures] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [googleSync, setGoogleSync] = useState({
+    loading: true,
+    connected: false,
+    configured: false,
+    details: "",
+  });
   const [error, setError] = useState("");
   const [weekStart, setWeekStart] = useState(dayjs().startOf("isoWeek"));
   const [showForm, setShowForm] = useState(false);
@@ -123,6 +129,36 @@ export function AppointmentsPage() {
     const procedure = procedures.find((item) => String(item._id) === String(procedureTypeId));
     const durationMinutes = Number(procedure?.defaultDurationMinutes || 30);
     return startsAt.add(durationMinutes, "minute").format("YYYY-MM-DDTHH:mm");
+  };
+
+  const loadGoogleSyncStatus = async () => {
+    try {
+      const { data } = await api.get("/integrations/google/status");
+      const connected = Boolean(data?.connected);
+      const configured = Boolean(data?.configured);
+      const details = !configured
+        ? "Integracao Google nao configurada no servidor."
+        : connected
+          ? data?.tokenExpiryAt
+            ? `Expira em ${dayjs(data.tokenExpiryAt).format("DD/MM/YYYY HH:mm")}`
+            : "Conexao ativa."
+          : "Conecte na tela Integracoes para sincronizar com Google Calendar.";
+
+      setGoogleSync({
+        loading: false,
+        connected,
+        configured,
+        details,
+      });
+    } catch (_error) {
+      setGoogleSync({
+        loading: false,
+        connected: false,
+        configured: false,
+        details:
+          "Nao foi possivel verificar status da integracao Google neste momento.",
+      });
+    }
   };
 
   const load = async () => {
@@ -145,6 +181,10 @@ export function AppointmentsPage() {
   useEffect(() => {
     load().catch((err) => setError(err?.response?.data?.message || "Falha ao carregar agenda"));
   }, [weekStart.valueOf()]);
+
+  useEffect(() => {
+    loadGoogleSyncStatus().catch(() => null);
+  }, []);
 
   useEffect(() => {
     const selected = locationRouter.state?.selectedPatient;
@@ -439,6 +479,22 @@ export function AppointmentsPage() {
       <div className="week-header">
         <h2>Agenda da Semana</h2>
         <div className="inline-actions">
+          <span
+            className={`status-chip ${
+              googleSync.connected ? "status-chip-connected" : "status-chip-disconnected"
+            }`}
+            title={googleSync.details}
+          >
+            Google Sync:{" "}
+            {googleSync.loading
+              ? "Verificando..."
+              : googleSync.connected
+                ? "Ativo"
+                : "Inativo"}
+          </span>
+          <button type="button" className="btn-ghost" onClick={loadGoogleSyncStatus}>
+            Atualizar sync Google
+          </button>
           <button type="button" className="btn-ghost" onClick={previousWeek}>
             Semana anterior
           </button>
@@ -490,6 +546,16 @@ export function AppointmentsPage() {
               </button>
             ) : null}
           </div>
+
+          {googleSync.loading ? (
+            <p className="muted">Validando status da integracao Google...</p>
+          ) : googleSync.connected ? (
+            <p className="success">Google Calendar conectado: este agendamento sera sincronizado.</p>
+          ) : (
+            <p className="error">
+              Google Calendar desconectado: o agendamento sera salvo apenas no sistema.
+            </p>
+          )}
 
           <label className="autocomplete-wrap">
             Paciente

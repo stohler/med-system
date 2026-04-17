@@ -337,6 +337,29 @@ button:disabled {
   gap: 12px;
 }
 
+.sync-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sync-status-chip-active {
+  background: #ecfdf5;
+  border-color: #10b981;
+  color: #065f46;
+}
+
+.sync-status-chip-inactive {
+  background: #fef2f2;
+  border-color: #f87171;
+  color: #991b1b;
+}
+
 .week-days-actions {
   display: grid;
   grid-template-columns: repeat(7, minmax(120px, 1fr));
