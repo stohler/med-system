@@ -8,6 +8,8 @@ export function IntegrationsPage() {
     connectedAt: "",
     hasRefreshToken: false,
     expiresAt: "",
+    accessTokenExpired: false,
+    reason: "",
   });
   const [whatsapp, setWhatsapp] = useState(null);
   const [qr, setQr] = useState("");
@@ -116,6 +118,8 @@ export function IntegrationsPage() {
         connectedAt: data?.connectedAt || "",
         hasRefreshToken: Boolean(data?.hasRefreshToken),
         expiresAt: data?.expiresAt || "",
+        accessTokenExpired: Boolean(data?.accessTokenExpired),
+        reason: data?.reason || "",
       });
     } catch (err) {
       setError(err?.response?.data?.message || "Falha ao obter status do Google");
@@ -133,6 +137,8 @@ export function IntegrationsPage() {
           connectedAt: "",
           hasRefreshToken: false,
           expiresAt: "",
+          accessTokenExpired: false,
+          reason: "disconnected",
         });
         setSuccess(response.data?.message || "Vinculo do Google removido com sucesso.");
       })
@@ -235,12 +241,25 @@ export function IntegrationsPage() {
         </p>
         {googleStatus.connectedAt ? (
           <p className="muted">
-            Conectado em: {new Date(googleStatus.connectedAt).toLocaleString("pt-BR")}
+            {googleStatus.connected ? "Conectado em" : "Ultima conexao em"}:{" "}
+            {new Date(googleStatus.connectedAt).toLocaleString("pt-BR")}
           </p>
         ) : null}
         {googleStatus.expiresAt ? (
           <p className="muted">
             Expira em: {new Date(googleStatus.expiresAt).toLocaleString("pt-BR")}
+          </p>
+        ) : null}
+        {!googleStatus.connected && googleStatus.reason ? (
+          <p className="muted">
+            Motivo:{" "}
+            {googleStatus.reason === "missing_refresh_token"
+              ? "Token sem refresh. Reconecte para autorizar acesso offline."
+              : googleStatus.reason === "token_expired"
+                ? "Access token expirado."
+                : googleStatus.reason === "not_configured"
+                  ? "Integracao Google nao configurada no backend."
+                  : "Integracao indisponivel no momento."}
           </p>
         ) : null}
         <div className="inline-actions">

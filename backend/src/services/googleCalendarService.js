@@ -55,6 +55,8 @@ function getGoogleAuthUrl(state = "med-system") {
   if (!client) return "";
   return client.generateAuthUrl({
     access_type: "offline",
+    prompt: "consent",
+    include_granted_scopes: true,
     scope: ["https://www.googleapis.com/auth/calendar.events"],
     state,
   });
@@ -109,14 +111,24 @@ function getGoogleConnectionStatusForUser(user) {
     Boolean(tokens) &&
     (hasRefreshToken || (hasAccessToken && !accessTokenExpired));
 
+  let reason = "";
+  if (!configured) reason = "google_not_configured";
+  else if (!tokens) reason = "google_not_connected";
+  else if (!hasAccessToken && !hasRefreshToken) reason = "google_tokens_invalid";
+  else if (!hasRefreshToken && hasAccessToken && accessTokenExpired) {
+    reason = "google_access_expired_without_refresh";
+  }
+
   return {
     configured,
     connected,
     connectedAt: user?.googleCalendarConnectedAt || null,
     tokenExpiryAt: tokenExpiryAt || null,
+    expiresAt: tokenExpiryAt || null,
     hasAccessToken,
     hasRefreshToken,
     accessTokenExpired,
+    reason,
   };
 }
 
