@@ -20,8 +20,23 @@ const {
 } = require("../services/whatsappService");
 
 function serviceEndpoint(pathname) {
-  const base = String(env.whatsappServiceBaseUrl || "").trim();
+  let base = String(env.whatsappServiceBaseUrl || "").trim();
   if (!base) return "";
+  try {
+    const parsed = new URL(base);
+    const hostname = String(parsed.hostname || "").toLowerCase();
+    const isLocalHost =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.endsWith(".local");
+    if (parsed.protocol === "http:" && !isLocalHost) {
+      parsed.protocol = "https:";
+      base = parsed.toString();
+    }
+  } catch (_error) {
+    // Mantem valor original quando nao for URL parseavel.
+  }
   return `${base.replace(/\/+$/, "")}${pathname}`;
 }
 

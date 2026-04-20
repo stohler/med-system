@@ -184,7 +184,7 @@ O backend atua como proxy para um servico externo de WhatsApp atraves das rotas:
 
 No deploy do backend, configure:
 
-- `WHATSAPP_SERVICE_BASE_URL=http://api-sandbox.moneri.com.br/v1/whatsapp-service`
+- `WHATSAPP_SERVICE_BASE_URL=https://api-sandbox.moneri.com.br/v1/whatsapp-service`
 - `WHATSAPP_SERVICE_TOKEN=<token-do-servico>` (se aplicavel)
 
 Quando `WHATSAPP_SERVICE_BASE_URL` estiver definido, o backend encaminha as chamadas de WhatsApp para esse endpoint externo.

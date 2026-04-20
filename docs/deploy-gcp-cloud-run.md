@@ -43,7 +43,7 @@ Secrets de aplicação (backend):
 - `GOOGLE_CLIENT_SECRET`
 - `GOOGLE_REDIRECT_URI` (ex: `https://med-api.stohler.com.br/api/integrations/google/callback`)
 - `GOOGLE_CALENDAR_ID`
-- `WHATSAPP_SERVICE_BASE_URL` (ex: `http://api-sandbox.moneri.com.br/v1/whatsapp-service`)
+- `WHATSAPP_SERVICE_BASE_URL` (ex: `https://api-sandbox.moneri.com.br/v1/whatsapp-service`)
 - `WHATSAPP_SERVICE_TOKEN` (se o servico exigir autenticacao)
 
 > Compatibilidade: `WHATSAPP_WORKER_URL` e `WHATSAPP_WORKER_TOKEN` ainda podem ser usados como alias.

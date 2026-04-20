@@ -85,7 +85,7 @@ jobs:
           GOOGLE_REDIRECT_URI: "${{ secrets.GOOGLE_REDIRECT_URI }}"
           GOOGLE_CALENDAR_ID: "${{ secrets.GOOGLE_CALENDAR_ID }}"
           FRONTEND_ORIGIN: "${{ secrets.FRONTEND_ORIGIN }}"
-          WHATSAPP_SERVICE_BASE_URL: "${{ secrets.WHATSAPP_SERVICE_BASE_URL != '' && secrets.WHATSAPP_SERVICE_BASE_URL || secrets.WHATSAPP_WORKER_URL != '' && secrets.WHATSAPP_WORKER_URL || 'http://api-sandbox.moneri.com.br/v1/whatsapp-service' }}"
+          WHATSAPP_SERVICE_BASE_URL: "${{ secrets.WHATSAPP_SERVICE_BASE_URL != '' && secrets.WHATSAPP_SERVICE_BASE_URL || secrets.WHATSAPP_WORKER_URL != '' && secrets.WHATSAPP_WORKER_URL || 'https://api-sandbox.moneri.com.br/v1/whatsapp-service' }}"
           WHATSAPP_SERVICE_TOKEN: "${{ secrets.WHATSAPP_SERVICE_TOKEN != '' && secrets.WHATSAPP_SERVICE_TOKEN || secrets.WHATSAPP_WORKER_TOKEN }}"
           EOF
 
