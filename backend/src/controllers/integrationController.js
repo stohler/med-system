@@ -184,46 +184,75 @@ function escapeHtml(text) {
     .replaceAll("'", "&#39;");
 }
 
+function normalizePhoneNumber(phone) {
+  return String(phone || "").replace(/\D/g, "");
+}
+
+function isReadyButSendFailed(statusCode, data) {
+  return (
+    Number(statusCode) >= 500 &&
+    data &&
+    data.sent === false &&
+    Boolean(data.status?.ready)
+  );
+}
+
+async function requestWhatsappExternalService(
+  req,
+  { method, pathname, body, includeWebhook = false }
+) {
+  const url = serviceEndpoint(pathname);
+  if (!url) {
+    return null;
+  }
+
+  const token = String(env.whatsappServiceToken || "").trim();
+  const webhookUrl = includeWebhook ? resolveWebhookUrl(req) : "";
+  const payloadWithWebhook =
+    method.toLowerCase() === "post" || method.toLowerCase() === "get"
+      ? {
+          ...(body || {}),
+          ...(webhookUrl ? { webhookUrl } : {}),
+        }
+      : body;
+  const lowerMethod = String(method || "get").toLowerCase();
+
+  return axios({
+    method,
+    url,
+    ...(lowerMethod === "get"
+      ? { params: payloadWithWebhook }
+      : { data: payloadWithWebhook }),
+    timeout: 180000,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token
+        ? {
+            "x-worker-token": token,
+            "x-service-token": token,
+            Authorization: `Bearer ${token}`,
+          }
+        : {}),
+    },
+    validateStatus: () => true,
+  });
+}
+
 async function proxyWhatsappToExternalService(
   req,
   res,
   { method, pathname, body, includeWebhook = false }
 ) {
-  const url = serviceEndpoint(pathname);
-  if (!url) {
+  if (!serviceEndpoint(pathname)) {
     return false;
   }
 
-  const token = String(env.whatsappServiceToken || "").trim();
-
   try {
-    const webhookUrl = includeWebhook ? resolveWebhookUrl(req) : "";
-    const payloadWithWebhook =
-      method.toLowerCase() === "post" || method.toLowerCase() === "get"
-        ? {
-            ...(body || {}),
-            ...(webhookUrl ? { webhookUrl } : {}),
-          }
-        : body;
-    const lowerMethod = String(method || "get").toLowerCase();
-    const response = await axios({
+    const response = await requestWhatsappExternalService(req, {
       method,
-      url,
-      ...(lowerMethod === "get"
-        ? { params: payloadWithWebhook }
-        : { data: payloadWithWebhook }),
-      timeout: 180000,
-      headers: {
-        "Content-Type": "application/json",
-        ...(token
-          ? {
-              "x-worker-token": token,
-              "x-service-token": token,
-              Authorization: `Bearer ${token}`,
-            }
-          : {}),
-      },
-      validateStatus: () => true,
+      pathname,
+      body,
+      includeWebhook,
     });
     res.status(response.status).json(response.data);
     return true;
@@ -537,13 +566,39 @@ const whatsappWebhook = asyncHandler(async (req, res) => {
 });
 
 const whatsappTestMessage = asyncHandler(async (req, res) => {
-  const proxied = await proxyWhatsappToExternalService(req, res, {
-    method: "post",
-    pathname: "/test-message",
-    body: req.body,
-    includeWebhook: true,
-  });
-  if (proxied) return;
+  if (serviceEndpoint("/test-message")) {
+    try {
+      const response = await requestWhatsappExternalService(req, {
+        method: "post",
+        pathname: "/test-message",
+        body: req.body,
+        includeWebhook: true,
+      });
+      const data = response?.data || {};
+      if (isReadyButSendFailed(response?.status, data)) {
+        return res.status(422).json({
+          sent: false,
+          message:
+            "Servico WhatsApp conectado, mas nao conseguiu enviar a mensagem de teste. Verifique se o numero esta no formato DDI+DDD+numero (somente digitos) e se o contato possui WhatsApp ativo.",
+          status: data.status || null,
+          details: {
+            normalizedPhone: normalizePhoneNumber(req.body?.phone),
+            providerMessage: data.message || "",
+            providerConnectionState: data.status?.connectionState || "",
+          },
+        });
+      }
+      return res.status(response.status).json(data);
+    } catch (error) {
+      return res.status(503).json({
+        error: true,
+        message:
+          error?.message ||
+          "Falha ao conectar com servico dedicado do WhatsApp.",
+        details: null,
+      });
+    }
+  }
 
   const phone = String(req.body.phone || "").trim();
   const text =
