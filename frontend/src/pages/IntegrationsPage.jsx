@@ -17,6 +17,14 @@ export function IntegrationsPage() {
   const [testPhone, setTestPhone] = useState("");
   const [testText, setTestText] = useState("Teste de envio do sistema clinico.");
   const [success, setSuccess] = useState("");
+  const computedWebhookUrl = (() => {
+    try {
+      const apiBase = new URL(api.defaults.baseURL || window.location.origin, window.location.origin);
+      return `${apiBase.origin}/api/integrations/whatsapp/webhook`;
+    } catch (_error) {
+      return `${window.location.origin}/api/integrations/whatsapp/webhook`;
+    }
+  })();
 
   const loadGoogle = async () => {
     setError("");
@@ -282,6 +290,9 @@ export function IntegrationsPage() {
 
       <div className="card">
         <h3>WhatsApp Business / Web</h3>
+        <p className="muted">
+          Webhook configurado para o servico WhatsApp: <strong>{computedWebhookUrl}</strong>
+        </p>
         <div className="inline-actions">
           <button type="button" onClick={loadWhatsappStatus}>Atualizar status</button>
           <button type="button" onClick={loadWhatsappQr}>Gerar QR Code</button>

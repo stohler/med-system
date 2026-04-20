@@ -3,6 +3,7 @@ module.exports = {
   Patient: require("./Patient"),
   ClinicLocation: require("./ClinicLocation"),
   ProcedureType: require("./ProcedureType"),
+  MessageTemplate: require("./MessageTemplate"),
   Appointment: require("./Appointment"),
   Encounter: require("./Encounter"),
   ExamResult: require("./ExamResult"),

@@ -4,6 +4,7 @@ const {
   ClinicLocation,
   ProcedureType,
   Patient,
+  MessageTemplate,
 } = require("../models");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { AppError, NotFoundError } = require("../utils/errors");
@@ -12,7 +13,21 @@ const {
   getStoredGoogleTokensForUser,
   updateCalendarEvent,
 } = require("../services/googleCalendarService");
-const { sendAppointmentNotification } = require("../services/notificationService");
+const { sendWhatsappNotification } = require("../services/whatsappService");
+
+const CONSULTATION_REMINDER_KEY = "consultation_reminder_1_day_before";
+const DEFAULT_APPOINTMENT_TEMPLATE = `Confirmado agendamento
+
+Agendamento: {{appointmentDate}} - {{appointmentTime}}
+{{locationName}} - {{procedureName}}
+{{locationAddress}}
+
+As informacoes de preparo e orientacoes sobre o exame podem ser encontradas nesse link:
+
+{{preparationInfoUrl}}
+
+A nao realizacao correta do preparo, conforme orientado, pode acarretar a nao
+realizacao do exame.`;
 
 const appointmentSchema = z.object({
   patient: z.string().min(1),
@@ -28,6 +43,13 @@ const updateSchema = appointmentSchema.partial().extend({
     .enum(["scheduled", "confirmed", "cancelled", "completed", "no_show"])
     .optional(),
 });
+
+const confirmMessageSchema = z
+  .object({
+    action: z.enum(["send", "skip", "copy"]).default("skip"),
+    text: z.string().optional(),
+  })
+  .optional();
 
 function overlapFilter({ startsAt, endsAt, location, ignoreId }) {
   return {
@@ -73,8 +95,88 @@ async function calculatePrice(locationId, procedureTypeId) {
   return (location.consultationPriceCents || 0) + procedurePrice;
 }
 
+function formatAppointmentDate(value) {
+  return new Date(value).toLocaleDateString("pt-BR");
+}
+
+function formatAppointmentTime(value) {
+  const date = new Date(value);
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${hour}:${minute}`;
+}
+
+function buildLocationAddress(location) {
+  if (!location) return "-";
+  const cityUf = [location.city, location.state].filter(Boolean).join(" - ");
+  const parts = [location.addressLine1, cityUf, location.zipCode].filter(Boolean);
+  return parts.join(", ") || "-";
+}
+
+function renderTemplate(template, context) {
+  return String(template || "").replace(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g, (_m, token) => {
+    return String(context[token] ?? "");
+  });
+}
+
+async function resolveAppointmentTemplate(procedure) {
+  if (procedure?.appointmentConfirmationTemplate?.trim()) {
+    return procedure.appointmentConfirmationTemplate.trim();
+  }
+  const globalTemplate = await MessageTemplate.findOne({
+    key: CONSULTATION_REMINDER_KEY,
+    enabled: true,
+  }).lean();
+  if (globalTemplate?.content) {
+    return String(globalTemplate.content);
+  }
+  return DEFAULT_APPOINTMENT_TEMPLATE;
+}
+
+async function buildAppointmentMessage(payload) {
+  const [procedure, location, patient] = await Promise.all([
+    ProcedureType.findById(payload.procedureType),
+    ClinicLocation.findById(payload.location),
+    Patient.findById(payload.patient),
+  ]);
+
+  if (!procedure || !location) {
+    throw new NotFoundError("Endereco ou procedimento nao encontrado");
+  }
+  if (!patient) {
+    throw new NotFoundError("Paciente nao encontrado");
+  }
+
+  const context = {
+    patientName: patient.fullName || "",
+    appointmentDate: formatAppointmentDate(payload.startsAt),
+    appointmentTime: formatAppointmentTime(payload.startsAt),
+    appointmentDateTime: `${formatAppointmentDate(payload.startsAt)} - ${formatAppointmentTime(
+      payload.startsAt
+    )}`,
+    locationName: location.name || "",
+    locationAddress: buildLocationAddress(location),
+    procedureName: procedure.name || "",
+    preparationInfoUrl: procedure.preparationInfoUrl || "",
+    notes: payload.notes || "",
+  };
+  const template = await resolveAppointmentTemplate(procedure);
+  const message = renderTemplate(template, context);
+
+  return {
+    patient,
+    location,
+    procedure,
+    context,
+    template,
+    message,
+    canSend: Boolean(procedure.appointmentConfirmationEnabled),
+  };
+}
+
 const createAppointment = asyncHandler(async (req, res) => {
   const payload = appointmentSchema.parse(req.body);
+  const confirmMessage = confirmMessageSchema.parse(req.body.confirmMessage);
   if (payload.endsAt <= payload.startsAt) {
     throw new AppError("Fim deve ser maior que inicio", 400);
   }
@@ -85,6 +187,11 @@ const createAppointment = asyncHandler(async (req, res) => {
   const appointment = await Appointment.create({
     ...payload,
     calculatedPriceCents,
+    notificationPreviewMessage: confirmMessage?.text || "",
+    notificationDecision: confirmMessage?.action || "skip",
+    notificationChannel: confirmMessage?.action === "send" ? "whatsapp" : "",
+    notificationStatus: confirmMessage?.action === "send" ? "pending" : "skipped",
+    notificationSentAt: null,
   });
 
   const populated = await Appointment.findById(appointment._id).populate([
@@ -115,16 +222,46 @@ const createAppointment = asyncHandler(async (req, res) => {
     // Nao interrompe fluxo de atendimento
   }
 
-  try {
-    const patient = await Patient.findById(payload.patient);
-    if (patient) {
-      await sendAppointmentNotification({ patient, appointment: populated });
+  if (confirmMessage?.action === "send" && confirmMessage?.text) {
+    try {
+      const [patient, procedure] = await Promise.all([
+        Patient.findById(payload.patient),
+        ProcedureType.findById(payload.procedureType),
+      ]);
+      if (patient?.phone && procedure?.appointmentConfirmationEnabled) {
+        const sent = await sendWhatsappNotification({
+          phone: patient.phone,
+          text: confirmMessage.text,
+        }).catch(() => false);
+        if (sent) {
+          appointment.notificationSentAt = new Date();
+          appointment.notificationStatus = "sent";
+        } else {
+          appointment.notificationStatus = "failed";
+        }
+      } else {
+        appointment.notificationStatus = "skipped";
+      }
+      await appointment.save();
+    } catch (_err) {
+      appointment.notificationStatus = "failed";
+      await appointment.save();
     }
-  } catch (_err) {
-    // Nao interrompe fluxo
   }
 
   res.status(201).json({ appointment: populated });
+});
+
+const previewAppointmentMessage = asyncHandler(async (req, res) => {
+  const payload = appointmentSchema.parse(req.body);
+  const preview = await buildAppointmentMessage(payload);
+
+  res.json({
+    canSend: preview.canSend,
+    message: preview.message,
+    template: preview.template,
+    context: preview.context,
+  });
 });
 
 const listAppointments = asyncHandler(async (req, res) => {
@@ -225,6 +362,7 @@ const deleteAppointment = asyncHandler(async (req, res) => {
 
 module.exports = {
   createAppointment,
+  previewAppointmentMessage,
   listAppointments,
   updateAppointment,
   deleteAppointment,

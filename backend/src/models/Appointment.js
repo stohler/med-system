@@ -15,6 +15,11 @@ const appointmentSchema = new mongoose.Schema(
     notes: { type: String, default: "" },
     calculatedPriceCents: { type: Number, required: true, min: 0 },
     googleEventId: { type: String, default: "" },
+    notificationPreviewMessage: { type: String, default: "" },
+    notificationSentAt: { type: Date, default: null },
+    notificationChannel: { type: String, default: "" },
+    notificationStatus: { type: String, default: "" },
+    notificationDecision: { type: String, default: "" },
   },
   { timestamps: true }
 );

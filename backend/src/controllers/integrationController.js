@@ -40,6 +40,17 @@ function serviceEndpoint(pathname) {
   return `${base.replace(/\/+$/, "")}${pathname}`;
 }
 
+function webhookBaseFromRequest(req) {
+  const explicit = String(env.publicApiUrl || "").trim();
+  if (explicit) {
+    return explicit.replace(/\/+$/, "");
+  }
+  const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
+  const host = req.headers["x-forwarded-host"] || req.get("host") || "";
+  if (!host) return "";
+  return `${proto}://${host}`.replace(/\/+$/, "");
+}
+
 function normalizePostMessageOrigins() {
   const rawOrigins = Array.isArray(env.frontendOrigins)
     ? env.frontendOrigins
@@ -133,6 +144,14 @@ function normalizeOriginValue(origin) {
   return `https://${raw}`;
 }
 
+function resolveWebhookUrl(req) {
+  const explicit = String(env.whatsappWebhookUrl || "").trim();
+  if (explicit) return explicit;
+  const apiBase = webhookBaseFromRequest(req);
+  if (!apiBase) return "";
+  return `${apiBase}/api/integrations/whatsapp/webhook`;
+}
+
 function computeOAuthFrontendOrigin(req) {
   const requestOrigin = normalizeOriginValue(req.headers.origin || "");
   if (requestOrigin) return requestOrigin;
@@ -165,7 +184,11 @@ function escapeHtml(text) {
     .replaceAll("'", "&#39;");
 }
 
-async function proxyWhatsappToExternalService(req, res, { method, pathname, body }) {
+async function proxyWhatsappToExternalService(
+  req,
+  res,
+  { method, pathname, body, includeWebhook = false }
+) {
   const url = serviceEndpoint(pathname);
   if (!url) {
     return false;
@@ -174,10 +197,21 @@ async function proxyWhatsappToExternalService(req, res, { method, pathname, body
   const token = String(env.whatsappServiceToken || "").trim();
 
   try {
+    const webhookUrl = includeWebhook ? resolveWebhookUrl(req) : "";
+    const payloadWithWebhook =
+      method.toLowerCase() === "post" || method.toLowerCase() === "get"
+        ? {
+            ...(body || {}),
+            ...(webhookUrl ? { webhookUrl } : {}),
+          }
+        : body;
+    const lowerMethod = String(method || "get").toLowerCase();
     const response = await axios({
       method,
       url,
-      data: body,
+      ...(lowerMethod === "get"
+        ? { params: payloadWithWebhook }
+        : { data: payloadWithWebhook }),
       timeout: 180000,
       headers: {
         "Content-Type": "application/json",
@@ -424,6 +458,7 @@ const whatsappQr = asyncHandler(async (req, res) => {
   const proxied = await proxyWhatsappToExternalService(req, res, {
     method: "get",
     pathname: "/qr",
+    includeWebhook: true,
   });
   if (proxied) return;
   try {
@@ -485,11 +520,28 @@ const whatsappQr = asyncHandler(async (req, res) => {
   }
 });
 
+const whatsappWebhook = asyncHandler(async (req, res) => {
+  // Endpoint receptor para eventos/mensagens enviados pelo servico externo de WhatsApp.
+  // Mantemos payload bruto para futura automacao de respostas.
+  // eslint-disable-next-line no-console
+  console.log(
+    "[whatsapp][webhook] evento recebido",
+    JSON.stringify({
+      receivedAt: new Date().toISOString(),
+      eventType: req.body?.event || req.body?.type || "unknown",
+      from: req.body?.from || req.body?.phone || "",
+      hasMessage: Boolean(req.body?.message || req.body?.text || req.body?.body),
+    })
+  );
+  res.status(200).json({ ok: true });
+});
+
 const whatsappTestMessage = asyncHandler(async (req, res) => {
   const proxied = await proxyWhatsappToExternalService(req, res, {
     method: "post",
     pathname: "/test-message",
     body: req.body,
+    includeWebhook: true,
   });
   if (proxied) return;
 
@@ -526,6 +578,7 @@ const whatsappRestart = asyncHandler(async (_req, res) => {
   const proxied = await proxyWhatsappToExternalService(_req, res, {
     method: "post",
     pathname: "/restart",
+    includeWebhook: true,
   });
   if (proxied) return;
 
@@ -552,6 +605,7 @@ const whatsappResetSession = asyncHandler(async (_req, res) => {
   const proxied = await proxyWhatsappToExternalService(_req, res, {
     method: "post",
     pathname: "/reset-session",
+    includeWebhook: true,
   });
   if (proxied) return;
 
@@ -577,6 +631,7 @@ module.exports = {
   googleDisconnect,
   whatsappStatus,
   whatsappQr,
+  whatsappWebhook,
   whatsappTestMessage,
   whatsappRestart,
   whatsappResetSession,

@@ -7,6 +7,7 @@ const appointmentRoutes = require("./appointmentRoutes");
 const encounterRoutes = require("./encounterRoutes");
 const reportRoutes = require("./reportRoutes");
 const integrationRoutes = require("./integrationRoutes");
+const messageTemplateRoutes = require("./messageTemplateRoutes");
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.use("/appointments", appointmentRoutes);
 router.use("/encounters", encounterRoutes);
 router.use("/reports", reportRoutes);
 router.use("/integrations", integrationRoutes);
+router.use("/message-templates", messageTemplateRoutes);
 
 module.exports = router;

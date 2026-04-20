@@ -27,6 +27,9 @@ const procedureSchema = z.object({
     .optional()
     .default([]),
   requiresPreparation: z.boolean().default(false),
+  appointmentConfirmationEnabled: z.boolean().optional(),
+  appointmentConfirmationTemplate: z.string().optional(),
+  preparationInfoUrl: z.string().optional(),
   active: z.boolean().optional(),
 });
 
@@ -59,6 +62,9 @@ const createProcedure = asyncHandler(async (req, res) => {
     defaultDurationMinutes: data.defaultDurationMinutes,
     defaultPriceCents: data.defaultPriceCents,
     requiresPreparation: data.requiresPreparation,
+    appointmentConfirmationEnabled: data.appointmentConfirmationEnabled,
+    appointmentConfirmationTemplate: data.appointmentConfirmationTemplate,
+    preparationInfoUrl: data.preparationInfoUrl,
     active: data.active,
     locationPrices: normalizeLocationPrices(data),
   });

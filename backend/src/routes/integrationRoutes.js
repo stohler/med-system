@@ -8,6 +8,7 @@ const {
   googleTokenExchange,
   whatsappStatus,
   whatsappQr,
+  whatsappWebhook,
   whatsappTestMessage,
   whatsappRestart,
   whatsappResetSession,
@@ -16,6 +17,7 @@ const {
 const router = Router();
 
 router.get("/google/callback", googleCallback);
+router.post("/whatsapp/webhook", whatsappWebhook);
 
 router.use(requireAuth);
 router.get("/google/url", googleAuthUrl);

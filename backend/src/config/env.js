@@ -38,6 +38,8 @@ const env = {
     process.env.WHATSAPP_SERVICE_TOKEN ||
     process.env.WHATSAPP_WORKER_TOKEN ||
     "",
+  publicApiUrl: process.env.PUBLIC_API_URL || "",
+  whatsappWebhookUrl: process.env.WHATSAPP_WEBHOOK_URL || "",
 };
 
 module.exports = { env };

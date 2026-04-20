@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { useToast } from "../toast";
 import { getLocationColor } from "../utils/locationColors";
 
 dayjs.extend(isoWeek);
@@ -29,6 +30,14 @@ const emptyForm = {
   startsAt: "",
   endsAt: "",
   notes: "",
+};
+
+const emptyMessagePreview = {
+  open: false,
+  loading: false,
+  payload: null,
+  message: "",
+  canSend: false,
 };
 
 function patientLabel(patient) {
@@ -103,6 +112,7 @@ function escapeHtml(value) {
 }
 
 export function AppointmentsPage() {
+  const toast = useToast();
   const [patients, setPatients] = useState([]);
   const [locations, setLocations] = useState([]);
   const [procedures, setProcedures] = useState([]);
@@ -118,6 +128,8 @@ export function AppointmentsPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [selectedAppointment, setSelectedAppointment] = useState(null);
+  const [messagePreview, setMessagePreview] = useState(emptyMessagePreview);
+  const [savingAppointment, setSavingAppointment] = useState(false);
 
   const navigate = useNavigate();
   const locationRouter = useLocation();
@@ -354,15 +366,77 @@ export function AppointmentsPage() {
 
       if (form.editingId) {
         await api.put(`/appointments/${form.editingId}`, payload);
+        setShowForm(false);
+        setForm(emptyForm);
+        await load();
+        return;
       } else {
-        await api.post("/appointments", payload);
+        setMessagePreview({
+          open: true,
+          loading: true,
+          payload,
+          message: "",
+          canSend: false,
+        });
+        const { data } = await api.post("/appointments/preview-message", payload);
+        setMessagePreview({
+          open: true,
+          loading: false,
+          payload,
+          message: data?.message || "",
+          canSend: Boolean(data?.canSend),
+        });
+        return;
       }
+    } catch (err) {
+      setMessagePreview(emptyMessagePreview);
+      setError(err?.response?.data?.message || err.message || "Falha ao salvar agendamento");
+    }
+  };
 
+  const closeMessagePreview = () => {
+    if (savingAppointment) return;
+    setMessagePreview(emptyMessagePreview);
+  };
+
+  const finishCreateWithMessageAction = async (action) => {
+    if (!messagePreview.payload) return;
+    setSavingAppointment(true);
+    setError("");
+    const previewText = messagePreview.message || "";
+
+    if (action === "copy" && previewText) {
+      try {
+        await navigator.clipboard.writeText(previewText);
+        toast.success("Mensagem copiada para a area de transferencia.");
+      } catch (_error) {
+        toast.error("Nao foi possivel copiar a mensagem automaticamente.");
+      }
+    }
+
+    try {
+      await api.post("/appointments", {
+        ...messagePreview.payload,
+        confirmMessage: {
+          action,
+          text: previewText,
+        },
+      });
+      setMessagePreview(emptyMessagePreview);
       setShowForm(false);
       setForm(emptyForm);
       await load();
+      if (action === "send") {
+        toast.success("Agendamento salvo e envio de mensagem acionado.");
+      } else if (action === "copy") {
+        toast.success("Agendamento salvo sem envio automatico.");
+      } else {
+        toast.info("Agendamento salvo sem envio de mensagem.");
+      }
     } catch (err) {
-      setError(err?.response?.data?.message || err.message || "Falha ao salvar agendamento");
+      setError(err?.response?.data?.message || "Falha ao salvar agendamento");
+    } finally {
+      setSavingAppointment(false);
     }
   };
 
@@ -686,6 +760,69 @@ export function AppointmentsPage() {
       ) : null}
 
       {error ? <p className="error">{error}</p> : null}
+
+      {messagePreview.open ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal-card">
+            <h3>Previa da mensagem para o paciente</h3>
+            {messagePreview.loading ? (
+              <p className="muted">Montando mensagem...</p>
+            ) : (
+              <>
+                {!messagePreview.canSend ? (
+                  <p className="muted">
+                    Este procedimento esta com envio desativado. Voce ainda pode copiar ou
+                    seguir sem enviar.
+                  </p>
+                ) : null}
+                <textarea
+                  value={messagePreview.message}
+                  readOnly
+                  rows={12}
+                  style={{ width: "100%", resize: "vertical" }}
+                />
+                <div className="inline-actions">
+                  <button
+                    type="button"
+                    onClick={() => finishCreateWithMessageAction("send")}
+                    disabled={
+                      messagePreview.loading ||
+                      savingAppointment ||
+                      !messagePreview.canSend
+                    }
+                  >
+                    Enviar e salvar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => finishCreateWithMessageAction("skip")}
+                    disabled={messagePreview.loading || savingAppointment}
+                  >
+                    Nao enviar e salvar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={() => finishCreateWithMessageAction("copy")}
+                    disabled={messagePreview.loading || savingAppointment}
+                  >
+                    Copiar e salvar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    onClick={closeMessagePreview}
+                    disabled={savingAppointment}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       <div className="week-grid-wrap card">
         <div className="week-grid">

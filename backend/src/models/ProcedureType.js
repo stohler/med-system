@@ -23,6 +23,9 @@ const procedureTypeSchema = new mongoose.Schema(
       default: [],
     },
     requiresPreparation: { type: Boolean, default: false },
+    appointmentConfirmationEnabled: { type: Boolean, default: false },
+    appointmentConfirmationTemplate: { type: String, default: "", trim: true },
+    preparationInfoUrl: { type: String, default: "", trim: true },
     active: { type: Boolean, default: true },
   },
   { timestamps: true }

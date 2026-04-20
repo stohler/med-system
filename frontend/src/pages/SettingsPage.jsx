@@ -32,6 +32,9 @@ const emptyProcedure = {
   defaultPriceCents: 0,
   requiresPreparation: false,
   locationPrices: [],
+  appointmentConfirmationEnabled: false,
+  appointmentConfirmationTemplate: "",
+  preparationInfoUrl: "",
 };
 
 export function SettingsPage() {
@@ -45,11 +48,21 @@ export function SettingsPage() {
   const [showProcedureForm, setShowProcedureForm] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [templateForm, setTemplateForm] = useState({
+    consultationReminder1Day: "",
+  });
 
   const load = async () => {
-    const [l, p] = await Promise.all([api.get("/locations"), api.get("/procedures")]);
+    const [l, p, templates] = await Promise.all([
+      api.get("/locations"),
+      api.get("/procedures"),
+      api.get("/message-templates"),
+    ]);
     setLocations(l.data.locations || []);
     setProcedures(p.data.procedures || []);
+    const consultationReminder1Day =
+      templates.data.templates?.consultationReminder1Day?.content || "";
+    setTemplateForm({ consultationReminder1Day });
   };
 
   useEffect(() => {
@@ -106,8 +119,25 @@ export function SettingsPage() {
       defaultPriceCents: procedure.defaultPriceCents || 0,
       requiresPreparation: Boolean(procedure.requiresPreparation),
       locationPrices: procedure.locationPrices || procedure.pricesByLocation || [],
+      appointmentConfirmationEnabled: Boolean(procedure.appointmentConfirmationEnabled),
+      appointmentConfirmationTemplate: procedure.appointmentConfirmationTemplate || "",
+      preparationInfoUrl: procedure.preparationInfoUrl || "",
     });
     setShowProcedureForm(true);
+  };
+
+  const saveMessageTemplates = async (event) => {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    try {
+      await api.put("/message-templates", {
+        consultationReminder1Day: templateForm.consultationReminder1Day,
+      });
+      setMessage("Templates de mensagem atualizados com sucesso.");
+    } catch (err) {
+      setError(err?.response?.data?.message || "Nao foi possivel salvar templates.");
+    }
   };
 
   const saveLocation = async (event) => {
@@ -141,6 +171,10 @@ export function SettingsPage() {
         ...procedureForm,
         defaultDurationMinutes: Number(procedureForm.defaultDurationMinutes),
         defaultPriceCents: Number(procedureForm.defaultPriceCents),
+        appointmentConfirmationEnabled: Boolean(procedureForm.appointmentConfirmationEnabled),
+        appointmentConfirmationTemplate:
+          procedureForm.appointmentConfirmationTemplate || "",
+        preparationInfoUrl: procedureForm.preparationInfoUrl || "",
         locationPrices: (procedureForm.locationPrices || []).map((entry) => ({
           location: entry.location,
           priceCents: Number(entry.priceCents || 0),
@@ -200,6 +234,34 @@ export function SettingsPage() {
 
       {error ? <p className="error">{error}</p> : null}
       {message ? <p className="success">{message}</p> : null}
+
+      <div className="card">
+        <div className="table-header">
+          <h3>Templates de mensagens</h3>
+        </div>
+        <form className="form-grid" onSubmit={saveMessageTemplates}>
+          <label>
+            Mensagem de confirmação de consulta 1 dia antes
+            <textarea
+              value={templateForm.consultationReminder1Day}
+              onChange={(e) =>
+                setTemplateForm((prev) => ({
+                  ...prev,
+                  consultationReminder1Day: e.target.value,
+                }))
+              }
+              placeholder="Use placeholders: {{patientName}}, {{startsAt}}, {{locationName}}..."
+              required
+            />
+          </label>
+          <p className="muted">
+            Placeholders disponiveis: {"{{patientName}}"}, {"{{appointmentDate}}"}, {"{{appointmentTime}}"}, {"{{appointmentDateTime}}"}, {"{{locationName}}"}, {"{{locationAddress}}"}, {"{{procedureName}}"}, {"{{preparationInfoUrl}}"}, {"{{notes}}"}.
+          </p>
+          <div className="inline-actions">
+            <button type="submit">Salvar templates</button>
+          </div>
+        </form>
+      </div>
 
       <div className="card">
         <div className="table-header">
@@ -314,6 +376,47 @@ export function SettingsPage() {
             <label>
               Descricao
               <textarea value={procedureForm.description} onChange={(e) => setProcedureForm((p) => ({ ...p, description: e.target.value }))} />
+            </label>
+            <label className="inline-check">
+              <input
+                type="checkbox"
+                checked={Boolean(procedureForm.appointmentConfirmationEnabled)}
+                onChange={(e) =>
+                  setProcedureForm((p) => ({
+                    ...p,
+                    appointmentConfirmationEnabled: e.target.checked,
+                  }))
+                }
+              />
+              Enviar confirmação de agendamento para este procedimento
+            </label>
+            <label>
+              Template de confirmação do procedimento
+              <textarea
+                value={procedureForm.appointmentConfirmationTemplate}
+                onChange={(e) =>
+                  setProcedureForm((p) => ({
+                    ...p,
+                    appointmentConfirmationTemplate: e.target.value,
+                  }))
+                }
+                placeholder={`Confirmado agendamento\n\nAgendamento: {{startsAt}}\n{{locationName}} - {{procedureName}}\n{{locationAddress}}\n\nAs informacoes de preparo...`}
+                disabled={!procedureForm.appointmentConfirmationEnabled}
+              />
+            </label>
+            <label>
+              Link de preparo/orientacoes
+              <input
+                type="url"
+                value={procedureForm.preparationInfoUrl}
+                onChange={(e) =>
+                  setProcedureForm((p) => ({
+                    ...p,
+                    preparationInfoUrl: e.target.value,
+                  }))
+                }
+                placeholder="https://stohler.com.br/endoscopia-digestiva-alta/"
+              />
             </label>
             <label>
               Duracao (min)
