@@ -98,6 +98,13 @@ function getChromiumPath() {
   return candidates.find((filePath) => fs.existsSync(filePath));
 }
 
+function normalizeWhatsappPhone(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("55")) return digits;
+  return `55${digits}`;
+}
+
 function getWhatsappStatus() {
   return {
     enabled: env.whatsappEnabled,
@@ -537,7 +544,7 @@ async function sendViaWhatsappBusiness({ phone, text }) {
   const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || "";
   if (!businessToken || !phoneNumberId) return false;
 
-  const normalized = String(phone || "").replace(/\D/g, "");
+  const normalized = normalizeWhatsappPhone(phone);
   if (!normalized) return false;
 
   const url = `https://graph.facebook.com/v22.0/${phoneNumberId}/messages`;
@@ -569,7 +576,7 @@ async function sendWhatsappNotification({ phone, text }) {
   }
 
   if (!ready || !client) return false;
-  const normalized = String(phone).replace(/\D/g, "");
+  const normalized = normalizeWhatsappPhone(phone);
   if (!normalized) return false;
 
   await client.sendMessage(`${normalized}@c.us`, text);

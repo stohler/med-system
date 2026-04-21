@@ -185,7 +185,9 @@ function escapeHtml(text) {
 }
 
 function normalizePhoneNumber(phone) {
-  return String(phone || "").replace(/\D/g, "");
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.startsWith("55") ? digits : `55${digits}`;
 }
 
 function isReadyButSendFailed(statusCode, data) {

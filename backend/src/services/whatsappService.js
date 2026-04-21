@@ -507,7 +507,7 @@ async function resetWhatsAppSession() {
 async function sendViaWhatsappBusiness({ phone, text }) {
   if (!env.whatsappBusinessToken || !env.whatsappPhoneNumberId) return false;
 
-  const normalized = String(phone || "").replace(/\D/g, "");
+  const normalized = normalizeWhatsappPhone(phone);
   if (!normalized) return false;
 
   const url = `https://graph.facebook.com/v22.0/${env.whatsappPhoneNumberId}/messages`;
@@ -531,6 +531,13 @@ async function sendViaWhatsappBusiness({ phone, text }) {
   return true;
 }
 
+function normalizeWhatsappPhone(phone) {
+  const digitsOnly = String(phone || "").replace(/\D/g, "");
+  if (!digitsOnly) return "";
+  if (digitsOnly.startsWith("55")) return digitsOnly;
+  return `55${digitsOnly}`;
+}
+
 async function sendWhatsappNotification({ phone, text }) {
   if (!env.whatsappEnabled || !phone || !text) return false;
 
@@ -539,7 +546,7 @@ async function sendWhatsappNotification({ phone, text }) {
   }
 
   if (!ready || !client) return false;
-  const normalized = String(phone).replace(/\D/g, "");
+  const normalized = normalizeWhatsappPhone(phone);
   if (!normalized) return false;
 
   await client.sendMessage(`${normalized}@c.us`, text);
