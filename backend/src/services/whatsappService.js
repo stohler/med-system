@@ -538,16 +538,68 @@ function normalizeWhatsappPhone(phone) {
   return `55${digitsOnly}`;
 }
 
+function normalizeWhatsappServiceBaseUrl() {
+  let base = String(env.whatsappServiceBaseUrl || "").trim();
+  if (!base) return "";
+  try {
+    const parsed = new URL(base);
+    const hostname = String(parsed.hostname || "").toLowerCase();
+    const isLocalHost =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.endsWith(".local");
+    if (parsed.protocol === "http:" && !isLocalHost) {
+      parsed.protocol = "https:";
+      base = parsed.toString();
+    }
+  } catch (_error) {
+    // Mantem valor original quando nao for URL parseavel.
+  }
+  return base.replace(/\/+$/, "");
+}
+
+async function sendViaWhatsappService({ phone, text }) {
+  const base = normalizeWhatsappServiceBaseUrl();
+  if (!base) return false;
+
+  const token = String(env.whatsappServiceToken || "").trim();
+  const response = await axios({
+    method: "post",
+    url: `${base}/test-message`,
+    data: { phone, text },
+    timeout: 20000,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token
+        ? {
+            "x-worker-token": token,
+            "x-service-token": token,
+            Authorization: `Bearer ${token}`,
+          }
+        : {}),
+    },
+    validateStatus: () => true,
+  });
+
+  return Boolean(response?.data?.sent);
+}
+
 async function sendWhatsappNotification({ phone, text }) {
   if (!env.whatsappEnabled || !phone || !text) return false;
 
+  const normalized = normalizeWhatsappPhone(phone);
+  if (!normalized) return false;
+
+  if (normalizeWhatsappServiceBaseUrl()) {
+    return sendViaWhatsappService({ phone: normalized, text }).catch(() => false);
+  }
+
   if (env.whatsappMode === "business") {
-    return sendViaWhatsappBusiness({ phone, text });
+    return sendViaWhatsappBusiness({ phone: normalized, text });
   }
 
   if (!ready || !client) return false;
-  const normalized = normalizeWhatsappPhone(phone);
-  if (!normalized) return false;
 
   await client.sendMessage(`${normalized}@c.us`, text);
   return true;
