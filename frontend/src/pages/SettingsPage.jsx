@@ -255,7 +255,7 @@ export function SettingsPage() {
             />
           </label>
           <p className="muted">
-            Placeholders disponiveis: {"{{patientName}}"}, {"{{appointmentDate}}"}, {"{{appointmentTime}}"}, {"{{appointmentDateTime}}"}, {"{{locationName}}"}, {"{{locationAddress}}"}, {"{{procedureName}}"}, {"{{preparationInfoUrl}}"}, {"{{notes}}"}.
+            Placeholders disponiveis: {"{{patientName}}"}, {"{{appointmentDate}}"}, {"{{appointmentTime}}"}, {"{{appointmentDateTime}}"}, {"{{locationName}}"}, {"{{locationAddress}}"}, {"{{procedureName}}"}, {"{{procedurePrice}}"}, {"{{procedurePriceBrl}}"}, {"{{preparationInfoUrl}}"}, {"{{notes}}"}.
           </p>
           <div className="inline-actions">
             <button type="submit">Salvar templates</button>

@@ -16,6 +16,10 @@ const {
 const { sendWhatsappNotification } = require("../services/whatsappService");
 
 const CONSULTATION_REMINDER_KEY = "consultation_reminder_1_day_before";
+const BRL_FORMATTER = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+});
 const DEFAULT_APPOINTMENT_TEMPLATE = `Confirmado agendamento
 
 Agendamento: {{appointmentDate}} - {{appointmentTime}}
@@ -119,6 +123,23 @@ function renderTemplate(template, context) {
   });
 }
 
+function resolveProcedurePriceCents(procedure, locationId) {
+  const locationPrices = Array.isArray(procedure?.locationPrices)
+    ? procedure.locationPrices
+    : [];
+  const locationOverride = locationPrices.find(
+    (item) => String(item?.location) === String(locationId)
+  );
+  if (locationOverride) {
+    return Number(locationOverride.priceCents || 0);
+  }
+  return Number(procedure?.defaultPriceCents || 0);
+}
+
+function formatCentsToBrl(cents) {
+  return BRL_FORMATTER.format((Number(cents || 0) || 0) / 100);
+}
+
 async function resolveAppointmentTemplate(procedure) {
   if (procedure?.appointmentConfirmationTemplate?.trim()) {
     return procedure.appointmentConfirmationTemplate.trim();
@@ -147,6 +168,11 @@ async function buildAppointmentMessage(payload) {
     throw new NotFoundError("Paciente nao encontrado");
   }
 
+  const procedurePriceCents = resolveProcedurePriceCents(
+    procedure,
+    location?._id || payload.location
+  );
+
   const context = {
     patientName: patient.fullName || "",
     appointmentDate: formatAppointmentDate(payload.startsAt),
@@ -157,6 +183,8 @@ async function buildAppointmentMessage(payload) {
     locationName: location.name || "",
     locationAddress: buildLocationAddress(location),
     procedureName: procedure.name || "",
+    procedurePrice: formatCentsToBrl(procedurePriceCents),
+    procedurePriceBrl: formatCentsToBrl(procedurePriceCents),
     preparationInfoUrl: procedure.preparationInfoUrl || "",
     notes: payload.notes || "",
   };

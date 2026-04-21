@@ -8,6 +8,7 @@ const DEFAULT_APPOINTMENT_TEMPLATE = `Confirmado agendamento
 Agendamento: {{appointmentDate}} - {{appointmentTime}}
 {{locationName}} - {{procedureName}}
 {{locationAddress}}
+Valor: {{procedurePriceBrl}}
 
 As informacoes de preparo e orientacoes sobre o exame podem ser encontradas nesse link:
 
@@ -32,6 +33,28 @@ function buildAddressLine(location) {
   const cityUf = [location.city, location.state].filter(Boolean).join(" - ");
   const parts = [location.addressLine1, cityUf, location.zipCode].filter(Boolean);
   return parts.join(", ") || "-";
+}
+
+const BRL_FORMATTER = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+});
+
+function formatCentsToBrl(cents) {
+  return BRL_FORMATTER.format((Number(cents || 0) || 0) / 100);
+}
+
+function resolveProcedurePriceCents(procedure, locationId) {
+  const locationPrices = Array.isArray(procedure?.locationPrices)
+    ? procedure.locationPrices
+    : [];
+  const locationOverride = locationPrices.find(
+    (item) => String(item?.location) === String(locationId)
+  );
+  if (locationOverride) {
+    return Number(locationOverride.priceCents || 0);
+  }
+  return Number(procedure?.defaultPriceCents || 0);
 }
 
 function renderTemplate(template, context) {
@@ -65,6 +88,12 @@ async function buildAppointmentNotificationMessage({ appointment, patient, proce
     locationName: location?.name || "",
     locationAddress: buildAddressLine(location),
     procedureName: procedure?.name || "",
+    procedurePriceBrl: formatCentsToBrl(
+      resolveProcedurePriceCents(procedure, location?._id || appointment?.location)
+    ),
+    procedurePrice: formatCentsToBrl(
+      resolveProcedurePriceCents(procedure, location?._id || appointment?.location)
+    ),
     preparationInfoUrl: procedure?.preparationInfoUrl || "",
     notes: appointment?.notes || "",
   };
