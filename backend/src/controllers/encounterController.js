@@ -190,8 +190,39 @@ const listEncounters = asyncHandler(async (req, res) => {
   if (req.query.patient) query.patient = req.query.patient;
   const encounters = await Encounter.find(query)
     .sort({ createdAt: -1 })
-    .populate(["patient", "clinician", "appointment"]);
+    .populate("patient")
+    .populate("clinician")
+    .populate({
+      path: "appointment",
+      populate: [
+        { path: "location", select: "name addressLine1 city state zipCode" },
+        { path: "procedureType", select: "name" },
+      ],
+    });
   res.json({ encounters });
+});
+
+const getEncounterById = asyncHandler(async (req, res) => {
+  const encounter = await Encounter.findById(req.params.id)
+    .populate("patient")
+    .populate("clinician")
+    .populate({
+      path: "appointment",
+      populate: [
+        { path: "location", select: "name addressLine1 city state zipCode" },
+        { path: "procedureType", select: "name" },
+      ],
+    });
+
+  if (!encounter) {
+    throw new NotFoundError("Evolucao nao encontrada");
+  }
+
+  const exams = await ExamResult.find({ encounter: encounter._id })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  res.json({ encounter, exams });
 });
 
 const addExamResult = asyncHandler(async (req, res) => {
@@ -322,6 +353,7 @@ module.exports = {
   createEncounter,
   updateEncounter,
   listEncounters,
+  getEncounterById,
   addExamResult,
   issuePrescription,
   scheduleSurgery,

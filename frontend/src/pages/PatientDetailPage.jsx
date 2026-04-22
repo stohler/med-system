@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { useParams } from "react-router-dom";
 import { api } from "../api";
@@ -7,6 +7,8 @@ export function PatientDetailPage() {
   const { id } = useParams();
   const [patient, setPatient] = useState(null);
   const [encounters, setEncounters] = useState([]);
+  const [selectedEncounter, setSelectedEncounter] = useState(null);
+  const [encounterDetailsLoading, setEncounterDetailsLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
@@ -22,6 +24,32 @@ export function PatientDetailPage() {
   useEffect(() => {
     load().catch((err) => setError(err?.response?.data?.message || "Falha ao carregar paciente"));
   }, [id]);
+
+  const encounterAppointmentDate = useMemo(() => {
+    if (!selectedEncounter?.appointment?.startsAt) return "-";
+    return dayjs(selectedEncounter.appointment.startsAt).format("DD/MM/YYYY HH:mm");
+  }, [selectedEncounter]);
+
+  const encounterLocationName = useMemo(() => {
+    return selectedEncounter?.appointment?.location?.name || "-";
+  }, [selectedEncounter]);
+
+  const encounterProcedureName = useMemo(() => {
+    return selectedEncounter?.appointment?.procedureType?.name || "-";
+  }, [selectedEncounter]);
+
+  const openEncounterDetails = async (encounterId) => {
+    setError("");
+    setEncounterDetailsLoading(true);
+    try {
+      const { data } = await api.get(`/encounters/${encounterId}`);
+      setSelectedEncounter(data.encounter || null);
+    } catch (err) {
+      setError(err?.response?.data?.message || "Falha ao carregar detalhes do atendimento");
+    } finally {
+      setEncounterDetailsLoading(false);
+    }
+  };
 
   const save = async (event) => {
     event.preventDefault();
@@ -103,9 +131,17 @@ export function PatientDetailPage() {
             <tbody>
               {encounters.map((encounter) => (
                 <tr key={encounter._id}>
-                  <td>{dayjs(encounter.createdAt).format("DD/MM/YYYY HH:mm")}</td>
-                  <td>{encounter.diagnosis || "-"}</td>
-                  <td>{encounter.evolution || "-"}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => openEncounterDetails(encounter._id)}
+                    >
+                      {dayjs(encounter.createdAt).format("DD/MM/YYYY HH:mm")}
+                    </button>
+                  </td>
+                  <td>{encounter.diagnosticHypothesis || encounter.diagnosis || "-"}</td>
+                  <td>{encounter.currentIllnessHistory || encounter.evolution || "-"}</td>
                   <td>
                     <button
                       type="button"
@@ -143,6 +179,138 @@ export function PatientDetailPage() {
           </table>
         </div>
       </div>
+
+      {selectedEncounter ? (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className="modal-card modal-card-large">
+            <div className="table-header">
+              <h3>Detalhes do atendimento</h3>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setSelectedEncounter(null)}
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div className="clinical-header">
+              <div>
+                <strong>Paciente</strong>
+                <span>{patient.fullName || "-"}</span>
+              </div>
+              <div>
+                <strong>Nascimento</strong>
+                <span>
+                  {patient.birthDate ? dayjs(patient.birthDate).format("DD/MM/YYYY") : "-"}
+                </span>
+              </div>
+              <div>
+                <strong>Procedimento</strong>
+                <span>{encounterProcedureName}</span>
+              </div>
+              <div>
+                <strong>Local</strong>
+                <span>{encounterLocationName}</span>
+              </div>
+              <div>
+                <strong>Data/Hora agendamento</strong>
+                <span>{encounterAppointmentDate}</span>
+              </div>
+              <div>
+                <strong>Evolucao em</strong>
+                <span>{dayjs(selectedEncounter.createdAt).format("DD/MM/YYYY HH:mm")}</span>
+              </div>
+            </div>
+
+            <div className="form-grid">
+              <label>
+                Historia da doenca atual
+                <textarea
+                  readOnly
+                  value={selectedEncounter.currentIllnessHistory || ""}
+                />
+              </label>
+
+              <div className="grid-cards">
+                <label>
+                  <span className="inline-actions">
+                    <strong>Comorbidades</strong>
+                    <span className="muted">
+                      {selectedEncounter.deniesComorbidities ? "Nega" : "Relata"}
+                    </span>
+                  </span>
+                  <textarea
+                    readOnly
+                    value={
+                      selectedEncounter.deniesComorbidities
+                        ? "Paciente nega comorbidades."
+                        : selectedEncounter.comorbidities || ""
+                    }
+                  />
+                </label>
+
+                <label>
+                  <span className="inline-actions">
+                    <strong>Alergias</strong>
+                    <span className="muted">
+                      {selectedEncounter.deniesAllergies ? "Nega" : "Relata"}
+                    </span>
+                  </span>
+                  <textarea
+                    readOnly
+                    value={
+                      selectedEncounter.deniesAllergies
+                        ? "Paciente nega alergias."
+                        : selectedEncounter.allergies || ""
+                    }
+                  />
+                </label>
+
+                <label>
+                  <span className="inline-actions">
+                    <strong>Medicamentos em uso</strong>
+                    <span className="muted">
+                      {selectedEncounter.deniesMedicationsInUse ? "Nega" : "Relata"}
+                    </span>
+                  </span>
+                  <textarea
+                    readOnly
+                    value={
+                      selectedEncounter.deniesMedicationsInUse
+                        ? "Paciente nega uso de medicamentos."
+                        : selectedEncounter.medicationsInUse || ""
+                    }
+                  />
+                </label>
+              </div>
+
+              <label>
+                Exame fisico
+                <textarea readOnly value={selectedEncounter.physicalExam || ""} />
+              </label>
+
+              <label>
+                Hipotese diagnostica
+                <textarea readOnly value={selectedEncounter.diagnosticHypothesis || ""} />
+              </label>
+
+              <label>
+                Conduta
+                <textarea readOnly value={selectedEncounter.conduct || ""} />
+              </label>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {encounterDetailsLoading ? (
+        <div className="modal-backdrop" role="status" aria-live="polite">
+          <div className="modal-card">
+            <p>Carregando detalhes do atendimento...</p>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
