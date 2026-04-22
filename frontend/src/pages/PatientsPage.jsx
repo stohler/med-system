@@ -5,6 +5,30 @@ import { api } from "../api";
 
 const PAGE_SIZE = 10;
 
+function onlyDigits(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function formatCpf(value) {
+  const digits = onlyDigits(value).slice(0, 11);
+  return digits
+    .replace(/^(\d{3})(\d)/, "$1.$2")
+    .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1-$2");
+}
+
+function formatPhone(value) {
+  const digits = onlyDigits(value).slice(0, 11);
+  if (digits.length <= 10) {
+    return digits
+      .replace(/^(\d{2})(\d)/, "($1) $2")
+      .replace(/(\d{4})(\d)/, "$1-$2");
+  }
+  return digits
+    .replace(/^(\d{2})(\d)/, "($1) $2")
+    .replace(/(\d{5})(\d)/, "$1-$2");
+}
+
 const initialForm = {
   fullName: "",
   birthDate: "",
@@ -94,6 +118,8 @@ export function PatientsPage() {
     try {
       const payload = {
         ...form,
+        documentNumber: onlyDigits(form.documentNumber),
+        phone: onlyDigits(form.phone),
         birthDate: form.birthDate
           ? new Date(`${form.birthDate}T00:00:00`).toISOString()
           : "",
@@ -176,14 +202,18 @@ export function PatientsPage() {
             Documento
             <input
               value={form.documentNumber}
-              onChange={(e) => setForm((p) => ({ ...p, documentNumber: e.target.value }))}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, documentNumber: formatCpf(e.target.value) }))
+              }
             />
           </label>
           <label>
             Telefone
             <input
               value={form.phone}
-              onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))}
+              onChange={(e) =>
+                setForm((p) => ({ ...p, phone: formatPhone(e.target.value) }))
+              }
             />
           </label>
           <label>

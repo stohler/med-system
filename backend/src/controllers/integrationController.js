@@ -2,7 +2,7 @@ const { asyncHandler } = require("../utils/asyncHandler");
 const axios = require("axios");
 const crypto = require("crypto");
 const { env } = require("../config/env");
-const { User } = require("../models");
+const { User, Patient, WhatsAppMessage } = require("../models");
 const {
   getGoogleAuthUrl,
   getGoogleTokens,
@@ -188,6 +188,34 @@ function normalizePhoneNumber(phone) {
   const digits = String(phone || "").replace(/\D/g, "");
   if (!digits) return "";
   return digits.startsWith("55") ? digits : `55${digits}`;
+}
+
+function normalizeIncomingWhatsappPhone(phone) {
+  const raw = String(phone || "").trim();
+  if (!raw) return "";
+  const withoutJid = raw.replace(/@c\.us$/i, "");
+  const digits = withoutJid.replace(/\D/g, "");
+  if (!digits) return "";
+  return normalizePhoneNumber(digits);
+}
+
+function buildLoosePhoneRegex(digits) {
+  const normalized = String(digits || "").replace(/\D/g, "");
+  if (!normalized) return null;
+  const pattern = normalized.split("").join("\\D*");
+  return new RegExp(`${pattern}$`);
+}
+
+function extractIncomingText(body) {
+  return (
+    body?.text ||
+    body?.message ||
+    body?.body ||
+    body?.data?.text ||
+    body?.data?.message ||
+    body?.data?.body ||
+    ""
+  );
 }
 
 function isReadyButSendFailed(statusCode, data) {
@@ -552,16 +580,74 @@ const whatsappQr = asyncHandler(async (req, res) => {
 });
 
 const whatsappWebhook = asyncHandler(async (req, res) => {
-  // Endpoint receptor para eventos/mensagens enviados pelo servico externo de WhatsApp.
-  // Mantemos payload bruto para futura automacao de respostas.
+  const from =
+    req.body?.from ||
+    req.body?.phone ||
+    req.body?.sender ||
+    req.body?.data?.from ||
+    req.body?.data?.phone ||
+    "";
+  const normalizedFrom = normalizeIncomingWhatsappPhone(from);
+  const text = String(extractIncomingText(req.body) || "").trim();
+  const eventType = String(req.body?.event || req.body?.type || "incoming_message");
+
+  let linkedPatientId = null;
+  if (normalizedFrom) {
+    const candidates = [normalizedFrom];
+    if (normalizedFrom.startsWith("55")) {
+      candidates.push(normalizedFrom.slice(2));
+    }
+    let patient = await Patient.findOne({
+      $or: [{ phoneNormalized: { $in: candidates } }, { phone: { $in: candidates } }],
+    }).select("_id");
+    if (!patient) {
+      const regexCandidates = candidates
+        .map((candidate) => buildLoosePhoneRegex(candidate))
+        .filter(Boolean)
+        .map((regex) => ({ phone: { $regex: regex } }));
+      if (regexCandidates.length > 0) {
+        patient = await Patient.findOne({ $or: regexCandidates }).select(
+          "_id phoneNormalized phone"
+        );
+      }
+    }
+    if (patient?._id && !patient.phoneNormalized && patient.phone) {
+      await Patient.updateOne(
+        { _id: patient._id },
+        { $set: { phoneNormalized: normalizePhoneNumber(patient.phone) } }
+      ).catch(() => null);
+    }
+    if (patient?._id) {
+      linkedPatientId = patient._id;
+    }
+  }
+
+  if (text || normalizedFrom) {
+    await WhatsAppMessage.create({
+      patient: linkedPatientId,
+      direction: "incoming",
+      from: normalizedFrom || from,
+      phoneNormalized: normalizedFrom,
+      text,
+      providerMessageId: String(
+        req.body?.messageId || req.body?.id || req.body?.data?.id || ""
+      ),
+      eventType,
+      matchedBy: linkedPatientId ? "phone" : "unmatched",
+      rawPayload: req.body,
+      receivedAt: new Date(),
+    });
+  }
+
   // eslint-disable-next-line no-console
   console.log(
     "[whatsapp][webhook] evento recebido",
     JSON.stringify({
       receivedAt: new Date().toISOString(),
-      eventType: req.body?.event || req.body?.type || "unknown",
-      from: req.body?.from || req.body?.phone || "",
-      hasMessage: Boolean(req.body?.message || req.body?.text || req.body?.body),
+      eventType,
+      from: normalizedFrom || from,
+      hasMessage: Boolean(text),
+      linkedPatientId: linkedPatientId ? String(linkedPatientId) : null,
     })
   );
   res.status(200).json({ ok: true });

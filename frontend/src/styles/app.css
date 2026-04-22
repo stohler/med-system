@@ -663,6 +663,68 @@ button:disabled {
   gap: 8px;
 }
 
+.whatsapp-message-list {
+  display: grid;
+  gap: 10px;
+}
+
+.whatsapp-message-item {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px;
+  background: #f8fafc;
+  display: grid;
+  gap: 6px;
+}
+
+.whatsapp-message-item.unmatched {
+  border-color: #fbbf24;
+  background: #fffbeb;
+}
+
+.whatsapp-message-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #475569;
+}
+
+.whatsapp-message-text {
+  margin: 0;
+  white-space: pre-wrap;
+  color: #0f172a;
+}
+
+.whatsapp-thread {
+  display: grid;
+  gap: 10px;
+}
+
+.whatsapp-message-card {
+  border: 1px solid #dbeafe;
+  background: #eff6ff;
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.whatsapp-message-card.unmatched {
+  border-color: #fbbf24;
+  background: #fffbeb;
+}
+
+.whatsapp-message-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #334155;
+  font-size: 12px;
+}
+
 .table-wrap {
   overflow: auto;
 }

@@ -7,6 +7,7 @@ const {
   ExamResult,
   Prescription,
   Patient,
+  WhatsAppMessage,
   User,
 } = require("../models");
 const { asyncHandler } = require("../utils/asyncHandler");
@@ -222,7 +223,21 @@ const getEncounterById = asyncHandler(async (req, res) => {
     .sort({ createdAt: -1 })
     .lean();
 
-  res.json({ encounter, exams });
+  const patient = encounter.patient || null;
+  const normalizedPhone = String(patient?.phoneNormalized || "").trim();
+  const whatsappMessages = normalizedPhone
+    ? await WhatsAppMessage.find({
+        $or: [{ patient: patient?._id || null }, { phoneNormalized: normalizedPhone }],
+      })
+        .sort({ receivedAt: -1 })
+        .limit(100)
+        .lean()
+    : await WhatsAppMessage.find({ patient: patient?._id || null })
+        .sort({ receivedAt: -1 })
+        .limit(100)
+        .lean();
+
+  res.json({ encounter, exams, whatsappMessages });
 });
 
 const addExamResult = asyncHandler(async (req, res) => {

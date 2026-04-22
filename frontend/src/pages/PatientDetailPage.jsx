@@ -3,10 +3,36 @@ import dayjs from "dayjs";
 import { useParams } from "react-router-dom";
 import { api } from "../api";
 
+function onlyDigits(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function formatCpf(value) {
+  const digits = onlyDigits(value).slice(0, 11);
+  return digits
+    .replace(/^(\d{3})(\d)/, "$1.$2")
+    .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1-$2");
+}
+
+function formatPhone(value) {
+  const digits = onlyDigits(value).slice(0, 13);
+  const withoutCountry = digits.startsWith("55") ? digits.slice(2) : digits;
+  if (withoutCountry.length <= 10) {
+    return withoutCountry
+      .replace(/^(\d{2})(\d)/, "($1) $2")
+      .replace(/(\d{4})(\d)/, "$1-$2");
+  }
+  return withoutCountry
+    .replace(/^(\d{2})(\d)/, "($1) $2")
+    .replace(/(\d{5})(\d)/, "$1-$2");
+}
+
 export function PatientDetailPage() {
   const { id } = useParams();
   const [patient, setPatient] = useState(null);
   const [encounters, setEncounters] = useState([]);
+  const [whatsappMessages, setWhatsappMessages] = useState([]);
   const [selectedEncounter, setSelectedEncounter] = useState(null);
   const [encounterDetailsLoading, setEncounterDetailsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -19,6 +45,7 @@ export function PatientDetailPage() {
     ]);
     setPatient(patientRes.data.data);
     setEncounters(encountersRes.data.encounters || []);
+    setWhatsappMessages(patientRes.data.whatsappMessages || []);
   };
 
   useEffect(() => {
@@ -61,9 +88,9 @@ export function PatientDetailPage() {
         birthDate: patient.birthDate
           ? new Date(`${dayjs(patient.birthDate).format("YYYY-MM-DD")}T00:00:00`).toISOString()
           : "",
-        documentNumber: patient.documentNumber,
+        documentNumber: onlyDigits(patient.documentNumber || ""),
         email: patient.email || "",
-        phone: patient.phone,
+        phone: onlyDigits(patient.phone || ""),
         notes: patient.notes || "",
       });
       setMessage("Paciente atualizado com sucesso.");
@@ -99,11 +126,27 @@ export function PatientDetailPage() {
         </label>
         <label>
           Documento
-          <input value={patient.documentNumber || ""} onChange={(e) => setPatient((p) => ({ ...p, documentNumber: e.target.value }))} />
+          <input
+            value={patient.documentNumber || ""}
+            onChange={(e) =>
+              setPatient((p) => ({
+                ...p,
+                documentNumber: formatCpf(e.target.value),
+              }))
+            }
+          />
         </label>
         <label>
           Telefone
-          <input value={patient.phone || ""} onChange={(e) => setPatient((p) => ({ ...p, phone: e.target.value }))} />
+          <input
+            value={patient.phone || ""}
+            onChange={(e) =>
+              setPatient((p) => ({
+                ...p,
+                phone: formatPhone(e.target.value),
+              }))
+            }
+          />
         </label>
         <label>
           E-mail
@@ -206,6 +249,14 @@ export function PatientDetailPage() {
                 </span>
               </div>
               <div>
+                <strong>Documento</strong>
+                <span>{patient.documentNumber || "-"}</span>
+              </div>
+              <div>
+                <strong>Telefone</strong>
+                <span>{patient.phone || "-"}</span>
+              </div>
+              <div>
                 <strong>Procedimento</strong>
                 <span>{encounterProcedureName}</span>
               </div>
@@ -221,6 +272,34 @@ export function PatientDetailPage() {
                 <strong>Evolucao em</strong>
                 <span>{dayjs(selectedEncounter.createdAt).format("DD/MM/YYYY HH:mm")}</span>
               </div>
+            </div>
+
+            <div className="card-mini">
+              <strong>Mensagens WhatsApp recebidas</strong>
+              {whatsappMessages.length > 0 ? (
+                <div className="whatsapp-message-list">
+                  {whatsappMessages.slice(0, 20).map((msg) => (
+                    <article
+                      key={msg._id}
+                      className={`whatsapp-message-item ${
+                        msg.matchedBy === "unmatched" ? "unmatched" : ""
+                      }`}
+                    >
+                      <header className="whatsapp-message-meta">
+                        <strong>
+                          {dayjs(msg.receivedAt || msg.createdAt).format("DD/MM/YYYY HH:mm")}
+                        </strong>
+                        <span className="muted">
+                          {msg.from || "-"} {msg.matchedBy === "unmatched" ? "(nao vinculado)" : ""}
+                        </span>
+                      </header>
+                      <p className="whatsapp-message-text">{msg.text || "-"}</p>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted">Nenhuma resposta de WhatsApp associada.</p>
+              )}
             </div>
 
             <div className="form-grid">

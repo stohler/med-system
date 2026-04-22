@@ -21,6 +21,13 @@ const encounterInitial = {
   conduct: "",
 };
 
+function formatWhatsappDateTime(value) {
+  if (!value) return "-";
+  const parsed = dayjs(value);
+  if (!parsed.isValid()) return "-";
+  return parsed.format("DD/MM/YYYY HH:mm");
+}
+
 export function EncountersPage() {
   const [encounters, setEncounters] = useState([]);
   const [locations, setLocations] = useState([]);
@@ -33,6 +40,7 @@ export function EncountersPage() {
   const [page, setPage] = useState(1);
   const [showExamSection, setShowExamSection] = useState(false);
   const [showSurgerySection, setShowSurgerySection] = useState(false);
+  const [whatsappMessages, setWhatsappMessages] = useState([]);
 
   const [encounterForm, setEncounterForm] = useState(encounterInitial);
   const [examForm, setExamForm] = useState({ examType: "", findings: "" });
@@ -83,6 +91,19 @@ export function EncountersPage() {
     }
   };
 
+  const loadPatientWhatsappMessages = async (patientId) => {
+    if (!patientId) {
+      setWhatsappMessages([]);
+      return;
+    }
+    try {
+      const { data } = await api.get(`/patients/${patientId}`);
+      setWhatsappMessages(data.whatsappMessages || []);
+    } catch (_error) {
+      setWhatsappMessages([]);
+    }
+  };
+
   useEffect(() => {
     const stateContext = locationRouter.state?.appointmentContext;
     const storageContext = localStorage.getItem("active_appointment_context");
@@ -99,6 +120,8 @@ export function EncountersPage() {
         ...prev,
         appointment: context.id || context._id || "",
       }));
+      const contextPatientId = context?.patient?._id || context?.patient || "";
+      loadPatientWhatsappMessages(contextPatientId).catch(() => null);
     }
 
     load()
@@ -113,6 +136,11 @@ export function EncountersPage() {
         toast.error(message);
       });
   }, []);
+
+  useEffect(() => {
+    const patientId = activeAppointment?.patient?._id || activeAppointment?.patient || "";
+    loadPatientWhatsappMessages(patientId).catch(() => null);
+  }, [activeAppointment?.patient?._id, activeAppointment?.patient]);
 
   const filteredEncounters = useMemo(() => {
     const scopedEncounters = activePatientId
@@ -386,6 +414,29 @@ export function EncountersPage() {
           Selecione um agendamento na agenda para iniciar a evolucao clinica.
         </div>
       )}
+
+      {hasContext ? (
+        <div className="card">
+          <h3>Mensagens WhatsApp do paciente</h3>
+          {whatsappMessages.length === 0 ? (
+            <p className="muted">Sem mensagens recebidas para este paciente.</p>
+          ) : (
+            <div className="whatsapp-thread">
+              {whatsappMessages.map((message) => (
+                <article key={message._id} className="whatsapp-message-card">
+                  <div className="whatsapp-message-head">
+                    <strong>
+                      {message.direction === "incoming" ? "Paciente" : "Clinica"}
+                    </strong>
+                    <span>{formatWhatsappDateTime(message.receivedAt || message.createdAt)}</span>
+                  </div>
+                  <p>{message.text || "-"}</p>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
 
       <form className="card form-grid" onSubmit={createEncounter}>
         <div className="table-header">

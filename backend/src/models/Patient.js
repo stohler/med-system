@@ -7,6 +7,7 @@ const patientSchema = new mongoose.Schema(
     documentNumber: { type: String, trim: true },
     email: { type: String, trim: true, lowercase: true, default: "" },
     phone: { type: String, trim: true },
+    phoneNormalized: { type: String, trim: true, default: "" },
     address: {
       street: { type: String, default: "" },
       city: { type: String, default: "" },
@@ -25,5 +26,6 @@ const patientSchema = new mongoose.Schema(
 patientSchema.index({ fullName: 1 });
 patientSchema.index({ documentNumber: 1 });
 patientSchema.index({ phone: 1 });
+patientSchema.index({ phoneNormalized: 1 });
 
 module.exports = mongoose.model("Patient", patientSchema);

@@ -32,6 +32,13 @@ const emptyForm = {
   notes: "",
 };
 
+function procedureEnabledAtLocation(procedure, locationId) {
+  if (!procedure || !locationId) return true;
+  const locationPrices = Array.isArray(procedure.locationPrices) ? procedure.locationPrices : [];
+  if (locationPrices.length === 0) return true;
+  return locationPrices.some((entry) => String(entry.location) === String(locationId));
+}
+
 const emptyMessagePreview = {
   open: false,
   loading: false,
@@ -235,6 +242,13 @@ export function AppointmentsPage() {
       .slice(0, 8);
   }, [patients, form.patientSearch]);
 
+  const proceduresForSelectedLocation = useMemo(() => {
+    if (!form.location) return procedures;
+    return procedures.filter((procedure) =>
+      procedureEnabledAtLocation(procedure, form.location)
+    );
+  }, [procedures, form.location]);
+
   const weeklyGrid = useMemo(() => {
     const map = new Map();
 
@@ -255,18 +269,29 @@ export function AppointmentsPage() {
     const start = weekStart.isoWeekday(dayKey).hour(9).minute(0).second(0).millisecond(0);
     const end = start.add(30, "minute");
 
-    setForm((prev) => ({
+    setForm((prev) => {
+      const initialLocation = prev.location || locations[0]?._id || "";
+      const availableProcedures = procedures.filter((procedure) =>
+        procedureEnabledAtLocation(procedure, initialLocation)
+      );
+      const initialProcedureType =
+        availableProcedures.find(
+          (procedure) => String(procedure._id) === String(prev.procedureType)
+        )?._id ||
+        availableProcedures[0]?._id ||
+        "";
+      return ({
       ...emptyForm,
       ...prev,
-      location: prev.location || locations[0]?._id || "",
-      procedureType: prev.procedureType || procedures[0]?._id || "",
+      location: initialLocation,
+      procedureType: initialProcedureType,
       startsAt: toDateTimeLocal(start),
       endsAt:
         calculateEndsAt(
           toDateTimeLocal(start),
-          prev.procedureType || procedures[0]?._id || ""
+          initialProcedureType
         ) || toDateTimeLocal(end),
-    }));
+    })});
     setShowForm(true);
   };
 
@@ -670,7 +695,24 @@ export function AppointmentsPage() {
             Endereco
             <select
               value={form.location}
-              onChange={(e) => setForm((prev) => ({ ...prev, location: e.target.value }))}
+              onChange={(e) =>
+                setForm((prev) => {
+                  const nextLocation = e.target.value;
+                  const allowedProcedures = procedures.filter((procedure) =>
+                    procedureEnabledAtLocation(procedure, nextLocation)
+                  );
+                  const keptProcedure = allowedProcedures.find(
+                    (procedure) => String(procedure._id) === String(prev.procedureType)
+                  );
+                  const nextProcedureType = keptProcedure?._id || allowedProcedures[0]?._id || "";
+                  return {
+                    ...prev,
+                    location: nextLocation,
+                    procedureType: nextProcedureType,
+                    endsAt: calculateEndsAt(prev.startsAt, nextProcedureType) || prev.endsAt,
+                  };
+                })
+              }
               required
             >
               <option value="">Selecione</option>
@@ -700,7 +742,7 @@ export function AppointmentsPage() {
               required
             >
               <option value="">Selecione</option>
-              {procedures.map((item) => (
+              {proceduresForSelectedLocation.map((item) => (
                 <option key={item._id} value={item._id}>
                   {item.name}
                 </option>

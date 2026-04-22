@@ -1,4 +1,4 @@
-const { Patient, Consent, Encounter } = require("../models");
+const { Patient, Consent, Encounter, WhatsAppMessage } = require("../models");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { encryptText, decryptText } = require("../utils/crypto");
 
@@ -13,6 +13,12 @@ function normalizeOptionalDate(value) {
   if (value === "") return undefined;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function normalizePhoneForMatch(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.startsWith("55") ? digits : `55${digits}`;
 }
 
 function buildPatientPayload(body) {
@@ -31,6 +37,7 @@ function buildPatientPayload(body) {
     delete payload.phone;
   } else {
     payload.phone = phone;
+    payload.phoneNormalized = normalizePhoneForMatch(phone);
   }
 
   if (birthDate === undefined) {
@@ -40,6 +47,24 @@ function buildPatientPayload(body) {
   }
 
   return payload;
+}
+
+function normalizeWhatsappPhone(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  return digits.startsWith("55") ? digits : `55${digits}`;
+}
+
+function dedupeMessagesById(messages) {
+  const map = new Map();
+  for (const item of messages || []) {
+    const key = String(item?._id || "");
+    if (!key) continue;
+    if (!map.has(key)) {
+      map.set(key, item);
+    }
+  }
+  return [...map.values()];
 }
 
 const listPatients = asyncHandler(async (req, res) => {
@@ -83,12 +108,31 @@ const getPatientById = asyncHandler(async (req, res) => {
     .populate(["appointment", "clinician"])
     .limit(200);
 
+  const normalizedPhone = normalizeWhatsappPhone(patient.phone || "");
+  const messagesByPatient = await WhatsAppMessage.find({ patient: patient._id })
+    .sort({ receivedAt: -1 })
+    .limit(200)
+    .lean();
+  const messagesByPhone = normalizedPhone
+    ? await WhatsAppMessage.find({ phoneNormalized: normalizedPhone })
+        .sort({ receivedAt: -1 })
+        .limit(200)
+        .lean()
+    : [];
+  const whatsappMessages = dedupeMessagesById([
+    ...messagesByPatient,
+    ...messagesByPhone,
+  ]).sort(
+    (a, b) => new Date(b.receivedAt || b.createdAt) - new Date(a.receivedAt || a.createdAt)
+  );
+
   return res.json({
     data: {
       ...patient.toObject(),
       notes: decryptText(patient.encryptedNotes),
     },
     encounters,
+    whatsappMessages,
   });
 });
 
@@ -133,6 +177,7 @@ const updatePatient = asyncHandler(async (req, res) => {
     normalizeOptionalString(req.body.phone) === undefined
   ) {
     unset.phone = "";
+    unset.phoneNormalized = "";
   }
   if (
     Object.prototype.hasOwnProperty.call(req.body, "birthDate") &&
