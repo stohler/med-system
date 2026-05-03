@@ -18,6 +18,10 @@ const {
   resetWhatsAppSession,
   sendWhatsappNotification,
 } = require("../services/whatsappService");
+const {
+  whatsappPhoneMatchVariants,
+  buildPatientPhoneMatchQuery,
+} = require("../utils/whatsappPhoneMatch");
 
 function serviceEndpoint(pathname) {
   let base = String(env.whatsappServiceBaseUrl || "").trim();
@@ -197,13 +201,6 @@ function normalizeIncomingWhatsappPhone(phone) {
   const digits = withoutJid.replace(/\D/g, "");
   if (!digits) return "";
   return normalizePhoneNumber(digits);
-}
-
-function buildLoosePhoneRegex(digits) {
-  const normalized = String(digits || "").replace(/\D/g, "");
-  if (!normalized) return null;
-  const pattern = normalized.split("").join("\\D*");
-  return new RegExp(`${pattern}$`);
 }
 
 function nestedIncomingMessage(body) {
@@ -617,24 +614,11 @@ const whatsappWebhook = asyncHandler(async (req, res) => {
 
   let linkedPatientId = null;
   if (normalizedFrom) {
-    const candidates = [normalizedFrom];
-    if (normalizedFrom.startsWith("55")) {
-      candidates.push(normalizedFrom.slice(2));
-    }
-    let patient = await Patient.findOne({
-      $or: [{ phoneNormalized: { $in: candidates } }, { phone: { $in: candidates } }],
-    }).select("_id");
-    if (!patient) {
-      const regexCandidates = candidates
-        .map((candidate) => buildLoosePhoneRegex(candidate))
-        .filter(Boolean)
-        .map((regex) => ({ phone: { $regex: regex } }));
-      if (regexCandidates.length > 0) {
-        patient = await Patient.findOne({ $or: regexCandidates }).select(
-          "_id phoneNormalized phone"
-        );
-      }
-    }
+    const variants = whatsappPhoneMatchVariants(normalizedFrom);
+    const matchQuery = buildPatientPhoneMatchQuery(variants);
+    let patient = matchQuery
+      ? await Patient.findOne(matchQuery).select("_id phoneNormalized phone")
+      : null;
     if (patient?._id && !patient.phoneNormalized && patient.phone) {
       await Patient.updateOne(
         { _id: patient._id },

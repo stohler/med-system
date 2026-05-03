@@ -66,6 +66,14 @@ export function PatientDetailPage() {
     return selectedEncounter?.appointment?.procedureType?.name || "-";
   }, [selectedEncounter]);
 
+  const incomingWhatsappMessages = useMemo(
+    () =>
+      (whatsappMessages || []).filter(
+        (m) => m.direction === "incoming" || !m.direction
+      ),
+    [whatsappMessages]
+  );
+
   const openEncounterDetails = async (encounterId) => {
     setError("");
     setEncounterDetailsLoading(true);
@@ -173,6 +181,38 @@ export function PatientDetailPage() {
         </label>
         <button type="submit">Salvar alteracoes</button>
       </form>
+
+      <div className="card">
+        <h3>WhatsApp — mensagens do paciente</h3>
+        <p className="muted">
+          Historico de mensagens recebidas pelo numero cadastrado (com ou sem DDI 55).
+        </p>
+        {incomingWhatsappMessages.length > 0 ? (
+          <div className="whatsapp-message-list">
+            {incomingWhatsappMessages.map((msg) => (
+              <article
+                key={msg._id}
+                className={`whatsapp-message-item ${
+                  msg.matchedBy === "unmatched" ? "unmatched" : ""
+                }`}
+              >
+                <header className="whatsapp-message-meta">
+                  <strong>
+                    {dayjs(msg.receivedAt || msg.createdAt).format("DD/MM/YYYY HH:mm")}
+                  </strong>
+                  <span className="muted">
+                    De: {msg.from || msg.phoneNormalized || "-"}
+                    {msg.matchedBy === "unmatched" ? " (telefone nao vinculado ao cadastro na recepcao)" : ""}
+                  </span>
+                </header>
+                <p className="whatsapp-message-text">{msg.text || "-"}</p>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">Nenhuma mensagem recebida deste paciente via WhatsApp.</p>
+        )}
+      </div>
 
       <div className="card">
         <h3>Atendimentos realizados</h3>
@@ -291,9 +331,9 @@ export function PatientDetailPage() {
 
             <div className="card-mini">
               <strong>Mensagens WhatsApp recebidas</strong>
-              {whatsappMessages.length > 0 ? (
+              {incomingWhatsappMessages.length > 0 ? (
                 <div className="whatsapp-message-list">
-                  {whatsappMessages.slice(0, 20).map((msg) => (
+                  {incomingWhatsappMessages.slice(0, 20).map((msg) => (
                     <article
                       key={msg._id}
                       className={`whatsapp-message-item ${
@@ -313,7 +353,7 @@ export function PatientDetailPage() {
                   ))}
                 </div>
               ) : (
-                <p className="muted">Nenhuma resposta de WhatsApp associada.</p>
+                <p className="muted">Nenhuma mensagem de WhatsApp associada a este paciente.</p>
               )}
             </div>
 
