@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - develop
       - cursor/sistema-de-gest-o-cl-nica-2da0
     paths:
       - "backend/**"
