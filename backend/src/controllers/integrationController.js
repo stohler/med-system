@@ -206,13 +206,28 @@ function buildLoosePhoneRegex(digits) {
   return new RegExp(`${pattern}$`);
 }
 
+function nestedIncomingMessage(body) {
+  const m = body?.message;
+  if (m && typeof m === "object" && !Array.isArray(m)) return m;
+  return null;
+}
+
 function extractIncomingText(body) {
+  const nested = nestedIncomingMessage(body);
+  if (nested) {
+    const t = nested.text ?? nested.body ?? nested.caption;
+    if (t != null && String(t).trim() !== "") return String(t);
+  }
+  const topMessage = body?.message;
   return (
     body?.text ||
-    body?.message ||
+    (typeof topMessage === "string" ? topMessage : "") ||
     body?.body ||
     body?.data?.text ||
-    body?.data?.message ||
+    (typeof body?.data?.message === "string" ? body.data.message : "") ||
+    (body?.data?.message && typeof body.data.message === "object"
+      ? String(body.data.message.text ?? body.data.message.body ?? body.data.message.caption ?? "")
+      : "") ||
     body?.data?.body ||
     ""
   );
@@ -580,7 +595,9 @@ const whatsappQr = asyncHandler(async (req, res) => {
 });
 
 const whatsappWebhook = asyncHandler(async (req, res) => {
+  const inner = nestedIncomingMessage(req.body);
   const from =
+    (inner && (inner.from || inner.fromPnJid || inner.fromJid)) ||
     req.body?.from ||
     req.body?.phone ||
     req.body?.sender ||
@@ -590,6 +607,13 @@ const whatsappWebhook = asyncHandler(async (req, res) => {
   const normalizedFrom = normalizeIncomingWhatsappPhone(from);
   const text = String(extractIncomingText(req.body) || "").trim();
   const eventType = String(req.body?.event || req.body?.type || "incoming_message");
+  const toRaw = inner?.to || req.body?.to || req.body?.data?.to || "";
+  const toNormalized = toRaw ? normalizeIncomingWhatsappPhone(toRaw) : "";
+  let receivedAt = new Date();
+  if (req.body?.receivedAt) {
+    const parsed = new Date(req.body.receivedAt);
+    if (!Number.isNaN(parsed.getTime())) receivedAt = parsed;
+  }
 
   let linkedPatientId = null;
   if (normalizedFrom) {
@@ -623,19 +647,24 @@ const whatsappWebhook = asyncHandler(async (req, res) => {
   }
 
   if (text || normalizedFrom) {
+    const providerMessageId =
+      req.body?.messageId ||
+      (inner && inner.id) ||
+      req.body?.id ||
+      req.body?.data?.id ||
+      "";
     await WhatsAppMessage.create({
       patient: linkedPatientId,
       direction: "incoming",
       from: normalizedFrom || from,
       phoneNormalized: normalizedFrom,
+      to: toNormalized || toRaw,
       text,
-      providerMessageId: String(
-        req.body?.messageId || req.body?.id || req.body?.data?.id || ""
-      ),
+      providerMessageId: String(providerMessageId || ""),
       eventType,
       matchedBy: linkedPatientId ? "phone" : "unmatched",
       rawPayload: req.body,
-      receivedAt: new Date(),
+      receivedAt,
     });
   }
 
