@@ -14,6 +14,7 @@ const {
   updateCalendarEvent,
 } = require("../services/googleCalendarService");
 const { sendWhatsappNotification } = require("../services/whatsappService");
+const { formatDisplayDate, formatDisplayTime } = require("../utils/displayTime");
 
 const CONSULTATION_REMINDER_KEY = "consultation_reminder_1_day_before";
 const BRL_FORMATTER = new Intl.NumberFormat("pt-BR", {
@@ -99,17 +100,6 @@ async function calculatePrice(locationId, procedureTypeId) {
   return (location.consultationPriceCents || 0) + procedurePrice;
 }
 
-function formatAppointmentDate(value) {
-  return new Date(value).toLocaleDateString("pt-BR");
-}
-
-function formatAppointmentTime(value) {
-  const date = new Date(value);
-  const hour = String(date.getHours()).padStart(2, "0");
-  const minute = String(date.getMinutes()).padStart(2, "0");
-  return `${hour}:${minute}`;
-}
-
 function buildLocationAddress(location) {
   if (!location) return "-";
   const cityUf = [location.city, location.state].filter(Boolean).join(" - ");
@@ -175,9 +165,9 @@ async function buildAppointmentMessage(payload) {
 
   const context = {
     patientName: patient.fullName || "",
-    appointmentDate: formatAppointmentDate(payload.startsAt),
-    appointmentTime: formatAppointmentTime(payload.startsAt),
-    appointmentDateTime: `${formatAppointmentDate(payload.startsAt)} - ${formatAppointmentTime(
+    appointmentDate: formatDisplayDate(payload.startsAt),
+    appointmentTime: formatDisplayTime(payload.startsAt),
+    appointmentDateTime: `${formatDisplayDate(payload.startsAt)} - ${formatDisplayTime(
       payload.startsAt
     )}`,
     locationName: location.name || "",

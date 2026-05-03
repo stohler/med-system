@@ -30,9 +30,11 @@ export function LoginPage() {
 
   return (
     <div className="login-wrap">
-      <form onSubmit={submit} className="card">
-        <h1>Sistema Clinico</h1>
-        <p>Autenticacao segura para equipe do consultorio.</p>
+      <form onSubmit={submit} className="card login-card">
+        <h1>Sistema clinico</h1>
+        <p className="login-lead">
+          Acesso seguro para a equipe do consultorio. Use seu e-mail e senha cadastrados.
+        </p>
 
         {mode === "register" && (
           <label>

@@ -8,6 +8,7 @@ const encounterRoutes = require("./encounterRoutes");
 const reportRoutes = require("./reportRoutes");
 const integrationRoutes = require("./integrationRoutes");
 const messageTemplateRoutes = require("./messageTemplateRoutes");
+const clinicPreferencesRoutes = require("./clinicPreferencesRoutes");
 
 const router = Router();
 
@@ -24,5 +25,6 @@ router.use("/encounters", encounterRoutes);
 router.use("/reports", reportRoutes);
 router.use("/integrations", integrationRoutes);
 router.use("/message-templates", messageTemplateRoutes);
+router.use("/clinic-preferences", clinicPreferencesRoutes);
 
 module.exports = router;

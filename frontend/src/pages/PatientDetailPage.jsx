@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 
 function onlyDigits(value) {
@@ -30,6 +30,7 @@ function formatPhone(value) {
 
 export function PatientDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [patient, setPatient] = useState(null);
   const [encounters, setEncounters] = useState([]);
   const [whatsappMessages, setWhatsappMessages] = useState([]);
@@ -101,12 +102,26 @@ export function PatientDetailPage() {
   };
 
   if (!patient) {
-    return <section className="stack">{error ? <p className="error">{error}</p> : <p>Carregando...</p>}</section>;
+    return (
+      <section className="stack">
+        <div className="page-title-row">
+          <button type="button" className="btn-ghost" onClick={() => navigate("/patients")}>
+            Voltar para lista
+          </button>
+        </div>
+        {error ? <p className="error">{error}</p> : <p>Carregando...</p>}
+      </section>
+    );
   }
 
   return (
     <section className="stack">
-      <h2>Detalhes do paciente</h2>
+      <div className="page-title-row">
+        <button type="button" className="btn-ghost" onClick={() => navigate("/patients")}>
+          Voltar para lista
+        </button>
+        <h2>Detalhes do paciente</h2>
+      </div>
 
       {error ? <p className="error">{error}</p> : null}
       {message ? <p className="success">{message}</p> : null}
