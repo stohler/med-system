@@ -11,7 +11,7 @@ const {
   User,
 } = require("../models");
 const { asyncHandler } = require("../utils/asyncHandler");
-const { AppError, NotFoundError } = require("../utils/errors");
+const { AppError, NotFoundError, ForbiddenError } = require("../utils/errors");
 const { buildPrescriptionPdf } = require("../services/pdfService");
 const { sendMail } = require("../services/emailService");
 
@@ -187,6 +187,9 @@ const updateEncounter = asyncHandler(async (req, res) => {
 });
 
 const listEncounters = asyncHandler(async (req, res) => {
+  if (req.user?.role === "reception") {
+    throw new ForbiddenError("Sem permissao");
+  }
   const query = {};
   if (req.query.patient) query.patient = req.query.patient;
   const encounters = await Encounter.find(query)
@@ -204,6 +207,9 @@ const listEncounters = asyncHandler(async (req, res) => {
 });
 
 const getEncounterById = asyncHandler(async (req, res) => {
+  if (req.user?.role === "reception") {
+    throw new ForbiddenError("Sem permissao");
+  }
   const encounter = await Encounter.findById(req.params.id)
     .populate("patient")
     .populate("clinician")

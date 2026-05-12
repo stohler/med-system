@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
+import { useAuth } from "../state";
 
 function onlyDigits(value) {
   return String(value || "").replace(/\D/g, "");
@@ -31,6 +32,8 @@ function formatPhone(value) {
 export function PatientDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isReception = user?.role === "reception";
   const [patient, setPatient] = useState(null);
   const [encounters, setEncounters] = useState([]);
   const [whatsappMessages, setWhatsappMessages] = useState([]);
@@ -39,7 +42,14 @@ export function PatientDetailPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    if (user?.role === "reception") {
+      const patientRes = await api.get(`/patients/${id}`);
+      setPatient(patientRes.data.data);
+      setEncounters([]);
+      setWhatsappMessages([]);
+      return;
+    }
     const [patientRes, encountersRes] = await Promise.all([
       api.get(`/patients/${id}`),
       api.get("/encounters", { params: { patient: id } }),
@@ -47,11 +57,11 @@ export function PatientDetailPage() {
     setPatient(patientRes.data.data);
     setEncounters(encountersRes.data.encounters || []);
     setWhatsappMessages(patientRes.data.whatsappMessages || []);
-  };
+  }, [id, user?.role]);
 
   useEffect(() => {
     load().catch((err) => setError(err?.response?.data?.message || "Falha ao carregar paciente"));
-  }, [id]);
+  }, [load]);
 
   const encounterAppointmentDate = useMemo(() => {
     if (!selectedEncounter?.appointment?.startsAt) return "-";
@@ -182,8 +192,10 @@ export function PatientDetailPage() {
         <button type="submit">Salvar alteracoes</button>
       </form>
 
-      <div className="card">
-        <h3>WhatsApp — mensagens do paciente</h3>
+      {!isReception ? (
+        <>
+          <div className="card">
+            <h3>WhatsApp — mensagens do paciente</h3>
         <p className="muted">
           Historico de mensagens recebidas pelo numero cadastrado (com ou sem DDI 55).
         </p>
@@ -444,6 +456,8 @@ export function PatientDetailPage() {
             <p>Carregando detalhes do atendimento...</p>
           </div>
         </div>
+      ) : null}
+        </>
       ) : null}
     </section>
   );

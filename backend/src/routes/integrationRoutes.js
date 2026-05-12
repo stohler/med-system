@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const { requireAuth } = require("../middlewares/auth");
+const { requireAuth, requireRole } = require("../middlewares/auth");
 const {
   googleAuthUrl,
   googleCallback,
@@ -20,6 +20,7 @@ router.get("/google/callback", googleCallback);
 router.post("/whatsapp/webhook", whatsappWebhook);
 
 router.use(requireAuth);
+router.use(requireRole("admin", "doctor", "assistant"));
 router.get("/google/url", googleAuthUrl);
 router.get("/google/status", googleStatus);
 router.post("/google/token", googleTokenExchange);

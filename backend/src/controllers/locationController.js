@@ -2,6 +2,7 @@ const { z } = require("zod");
 const { ClinicLocation } = require("../models");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { NotFoundError } = require("../utils/errors");
+const { receptionLocationFilter } = require("../utils/locationAccess");
 
 const locationSchema = z.object({
   name: z.string().min(2),
@@ -15,8 +16,9 @@ const locationSchema = z.object({
   active: z.boolean().optional(),
 });
 
-const listLocations = asyncHandler(async (_req, res) => {
-  const locations = await ClinicLocation.find().sort({ name: 1 });
+const listLocations = asyncHandler(async (req, res) => {
+  const filter = receptionLocationFilter(req.user) || {};
+  const locations = await ClinicLocation.find(filter).sort({ name: 1 });
   res.json({ locations });
 });
 

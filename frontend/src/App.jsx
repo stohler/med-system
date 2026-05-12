@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./state";
 import { Layout } from "./components/Layout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
+import { RoleRoute } from "./components/RoleRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { PatientsPage } from "./pages/PatientsPage";
 import { PatientDetailPage } from "./pages/PatientDetailPage";
@@ -10,6 +11,7 @@ import { EncountersPage } from "./pages/EncountersPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { IntegrationsPage } from "./pages/IntegrationsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { AccessProfilesPage } from "./pages/AccessProfilesPage";
 import { ToastProvider } from "./toast";
 
 function HomeRoutes() {
@@ -28,10 +30,46 @@ function HomeRoutes() {
                 <Route path="/patients" element={<PatientsPage />} />
                 <Route path="/patients/:id" element={<PatientDetailPage />} />
                 <Route path="/appointments" element={<AppointmentsPage />} />
-                <Route path="/encounters" element={<EncountersPage />} />
-                <Route path="/reports" element={<ReportsPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-                <Route path="/integrations" element={<IntegrationsPage />} />
+                <Route
+                  path="/encounters"
+                  element={
+                    <RoleRoute roles={["admin", "doctor", "assistant"]}>
+                      <EncountersPage />
+                    </RoleRoute>
+                  }
+                />
+                <Route
+                  path="/reports"
+                  element={
+                    <RoleRoute roles={["admin", "doctor", "assistant"]}>
+                      <ReportsPage />
+                    </RoleRoute>
+                  }
+                />
+                <Route
+                  path="/settings"
+                  element={
+                    <RoleRoute roles={["admin", "doctor", "assistant"]}>
+                      <SettingsPage />
+                    </RoleRoute>
+                  }
+                />
+                <Route
+                  path="/integrations"
+                  element={
+                    <RoleRoute roles={["admin", "doctor", "assistant"]}>
+                      <IntegrationsPage />
+                    </RoleRoute>
+                  }
+                />
+                <Route
+                  path="/access-profiles"
+                  element={
+                    <RoleRoute roles={["admin"]}>
+                      <AccessProfilesPage />
+                    </RoleRoute>
+                  }
+                />
               </Routes>
             </Layout>
           </ProtectedRoute>

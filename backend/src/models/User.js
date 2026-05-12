@@ -7,9 +7,12 @@ const userSchema = new mongoose.Schema(
     passwordHash: { type: String, required: true },
     role: {
       type: String,
-      enum: ["admin", "doctor", "assistant"],
+      enum: ["admin", "doctor", "assistant", "reception"],
       default: "assistant",
     },
+    allowedLocationIds: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "ClinicLocation" },
+    ],
     crm: { type: String, default: "" },
     active: { type: Boolean, default: true },
     lastLoginAt: { type: Date },

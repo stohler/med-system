@@ -1,4 +1,5 @@
 const { z } = require("zod");
+const mongoose = require("mongoose");
 const {
   Appointment,
   ClinicLocation,
@@ -7,7 +8,7 @@ const {
   MessageTemplate,
 } = require("../models");
 const { asyncHandler } = require("../utils/asyncHandler");
-const { AppError, NotFoundError } = require("../utils/errors");
+const { AppError, NotFoundError, ForbiddenError } = require("../utils/errors");
 const {
   createCalendarEvent,
   getStoredGoogleTokensForUser,
@@ -15,6 +16,10 @@ const {
 } = require("../services/googleCalendarService");
 const { sendWhatsappNotification } = require("../services/whatsappService");
 const { formatDisplayDate, formatDisplayTime } = require("../utils/displayTime");
+const {
+  assertLocationAllowedForReception,
+  normalizedAllowedLocationIds,
+} = require("../utils/locationAccess");
 
 const CONSULTATION_REMINDER_KEY = "consultation_reminder_1_day_before";
 const BRL_FORMATTER = new Intl.NumberFormat("pt-BR", {
@@ -195,6 +200,7 @@ async function buildAppointmentMessage(payload) {
 const createAppointment = asyncHandler(async (req, res) => {
   const payload = appointmentSchema.parse(req.body);
   const confirmMessage = confirmMessageSchema.parse(req.body.confirmMessage);
+  assertLocationAllowedForReception(req.user, payload.location);
   if (payload.endsAt <= payload.startsAt) {
     throw new AppError("Fim deve ser maior que inicio", 400);
   }
@@ -272,6 +278,7 @@ const createAppointment = asyncHandler(async (req, res) => {
 
 const previewAppointmentMessage = asyncHandler(async (req, res) => {
   const payload = appointmentSchema.parse(req.body);
+  assertLocationAllowedForReception(req.user, payload.location);
   const preview = await buildAppointmentMessage(payload);
 
   res.json({
@@ -289,9 +296,26 @@ const listAppointments = asyncHandler(async (req, res) => {
     if (req.query.from) query.startsAt.$gte = new Date(req.query.from);
     if (req.query.to) query.startsAt.$lte = new Date(req.query.to);
   }
-  if (req.query.location) query.location = req.query.location;
   if (req.query.patient) query.patient = req.query.patient;
   if (req.query.status) query.status = req.query.status;
+
+  const allowed = normalizedAllowedLocationIds(req.user);
+  if (allowed !== null) {
+    if (req.query.location) {
+      const loc = String(req.query.location);
+      if (!allowed.includes(loc)) {
+        throw new ForbiddenError("Sem permissao para este endereco");
+      }
+      query.location = loc;
+    } else {
+      query.location =
+        allowed.length === 0
+          ? { $in: [] }
+          : { $in: allowed.map((id) => new mongoose.Types.ObjectId(id)) };
+    }
+  } else if (req.query.location) {
+    query.location = req.query.location;
+  }
 
   const appointments = await Appointment.find(query)
     .sort({ startsAt: 1 })
@@ -306,9 +330,12 @@ const updateAppointment = asyncHandler(async (req, res) => {
     throw new NotFoundError("Agendamento nao encontrado");
   }
 
+  assertLocationAllowedForReception(req.user, appointment.location);
+
   const nextStartsAt = payload.startsAt || appointment.startsAt;
   const nextEndsAt = payload.endsAt || appointment.endsAt;
   const nextLocation = payload.location || appointment.location.toString();
+  assertLocationAllowedForReception(req.user, nextLocation);
   if (nextEndsAt <= nextStartsAt) {
     throw new AppError("Fim deve ser maior que inicio", 400);
   }
@@ -373,6 +400,8 @@ const deleteAppointment = asyncHandler(async (req, res) => {
   if (!appointment) {
     throw new NotFoundError("Agendamento nao encontrado");
   }
+
+  assertLocationAllowedForReception(req.user, appointment.location);
 
   await appointment.deleteOne();
   res.status(204).send();

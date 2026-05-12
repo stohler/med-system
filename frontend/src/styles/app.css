@@ -92,10 +92,24 @@ a {
   background: #e2e8f0;
   border-radius: 6px;
   width: 28px;
-  height: 22px;
+  height: 28px;
   display: grid;
   place-items: center;
   flex-shrink: 0;
+}
+
+.menu-icon svg {
+  display: block;
+  color: #475569;
+}
+
+.side-nav a.active .menu-icon {
+  background: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.side-nav a.active .menu-icon svg {
+  color: #1d4ed8;
 }
 
 .side-nav a.active {
@@ -173,6 +187,26 @@ label {
   display: grid;
   gap: 6px;
   font-size: 14px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+fieldset.form-grid {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px;
+  margin: 0;
+}
+
+fieldset.form-grid legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 input,

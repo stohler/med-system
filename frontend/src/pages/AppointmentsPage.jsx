@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { useAuth } from "../state";
 import { useToast } from "../toast";
 import { getLocationColor } from "../utils/locationColors";
 
@@ -145,6 +146,7 @@ function escapeHtml(value) {
 
 export function AppointmentsPage() {
   const toast = useToast();
+  const { user } = useAuth();
   const [patients, setPatients] = useState([]);
   const [locations, setLocations] = useState([]);
   const [procedures, setProcedures] = useState([]);
@@ -243,8 +245,18 @@ export function AppointmentsPage() {
   }, [weekStart.valueOf()]);
 
   useEffect(() => {
+    if (user?.role === "reception") {
+      setGoogleSync({
+        loading: false,
+        connected: false,
+        configured: false,
+        details: "Integracao Google nao disponivel para seu perfil.",
+      });
+      return undefined;
+    }
     loadGoogleSyncStatus().catch(() => null);
-  }, []);
+    return undefined;
+  }, [user?.role]);
 
   useEffect(() => {
     const selected = locationRouter.state?.selectedPatient;
