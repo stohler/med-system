@@ -3,8 +3,8 @@ import {
   Calendar,
   Plug,
   Settings,
-  ShieldUser,
   Stethoscope,
+  UserCog,
   Users,
 } from "lucide-react";
 
@@ -43,7 +43,7 @@ export const mainNavItems = [
   {
     to: "/access-profiles",
     label: "Perfis de acesso",
-    icon: ShieldUser,
+    icon: UserCog,
     roles: ["admin"],
   },
 ];
