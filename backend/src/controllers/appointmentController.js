@@ -11,7 +11,7 @@ const { asyncHandler } = require("../utils/asyncHandler");
 const { AppError, NotFoundError, ForbiddenError } = require("../utils/errors");
 const {
   createCalendarEvent,
-  getStoredGoogleTokensForUser,
+  getValidGoogleTokensForUser,
   updateCalendarEvent,
 } = require("../services/googleCalendarService");
 const { sendWhatsappNotification } = require("../services/whatsappService");
@@ -197,6 +197,21 @@ async function buildAppointmentMessage(payload) {
   };
 }
 
+function buildAgendaConfirmationMessage({ appointment, patient, procedure, location }) {
+  const locationName = location?.name || "a clinica";
+  const procedureName = procedure?.name || "seu procedimento";
+  const startsAt = appointment?.startsAt;
+  return [
+    "Confirmacao de agenda",
+    "",
+    `Ola ${patient?.fullName || "paciente"},`,
+    `seu agendamento de ${procedureName} em ${formatDisplayDate(startsAt)} as ${formatDisplayTime(
+      startsAt
+    )} foi confirmado.`,
+    `Local: ${locationName}.`,
+  ].join("\n");
+}
+
 const createAppointment = asyncHandler(async (req, res) => {
   const payload = appointmentSchema.parse(req.body);
   const confirmMessage = confirmMessageSchema.parse(req.body.confirmMessage);
@@ -226,7 +241,7 @@ const createAppointment = asyncHandler(async (req, res) => {
 
   // Integracao com Google Calendar e notificacoes ficam "best effort".
   try {
-    const googleTokens = getStoredGoogleTokensForUser(req.user);
+    const googleTokens = await getValidGoogleTokensForUser(req.user);
     if (!googleTokens) {
       throw new Error("google_not_connected");
     }
@@ -363,7 +378,7 @@ const updateAppointment = asyncHandler(async (req, res) => {
   ]);
 
   try {
-    const googleTokens = getStoredGoogleTokensForUser(req.user);
+    const googleTokens = await getValidGoogleTokensForUser(req.user);
     if (googleTokens) {
       if (appointment.googleEventId) {
         await updateCalendarEvent({
@@ -395,6 +410,112 @@ const updateAppointment = asyncHandler(async (req, res) => {
   res.json({ appointment: populated });
 });
 
+const resendAppointmentTemplateMessage = asyncHandler(async (req, res) => {
+  const appointment = await Appointment.findById(req.params.id).populate([
+    "patient",
+    "location",
+    "procedureType",
+  ]);
+  if (!appointment) {
+    throw new NotFoundError("Agendamento nao encontrado");
+  }
+  assertLocationAllowedForReception(req.user, appointment.location?._id || appointment.location);
+
+  const payload = {
+    patient: appointment.patient?._id || appointment.patient,
+    location: appointment.location?._id || appointment.location,
+    procedureType: appointment.procedureType?._id || appointment.procedureType,
+    startsAt: appointment.startsAt,
+    endsAt: appointment.endsAt,
+    notes: appointment.notes || "",
+  };
+  const preview = await buildAppointmentMessage(payload);
+  if (!preview.patient?.phone) {
+    throw new AppError("Paciente sem telefone para envio de mensagem.", 400);
+  }
+  if (!preview.canSend) {
+    throw new AppError("Envio de template desativado para este procedimento.", 400);
+  }
+
+  const sent = await sendWhatsappNotification({
+    phone: preview.patient.phone,
+    text: preview.message,
+  }).catch(() => false);
+
+  appointment.notificationPreviewMessage = preview.message;
+  appointment.notificationDecision = "resend_template";
+  appointment.notificationChannel = "whatsapp";
+  appointment.notificationStatus = sent ? "sent" : "failed";
+  if (sent) {
+    appointment.notificationSentAt = new Date();
+  }
+  await appointment.save();
+
+  if (!sent) {
+    return res.status(503).json({
+      sent: false,
+      message:
+        "Nao foi possivel reenviar o template agora. Verifique a conexao do WhatsApp.",
+    });
+  }
+
+  return res.json({
+    sent: true,
+    message: "Template de agendamento reenviado com sucesso.",
+  });
+});
+
+const sendAgendaConfirmationMessage = asyncHandler(async (req, res) => {
+  const appointment = await Appointment.findById(req.params.id).populate([
+    "patient",
+    "location",
+    "procedureType",
+  ]);
+  if (!appointment) {
+    throw new NotFoundError("Agendamento nao encontrado");
+  }
+  assertLocationAllowedForReception(req.user, appointment.location?._id || appointment.location);
+
+  if (!appointment.patient?.phone) {
+    throw new AppError("Paciente sem telefone para envio de confirmacao.", 400);
+  }
+
+  const confirmationMessage = buildAgendaConfirmationMessage({
+    appointment,
+    patient: appointment.patient,
+    procedure: appointment.procedureType,
+    location: appointment.location,
+  });
+  const sent = await sendWhatsappNotification({
+    phone: appointment.patient.phone,
+    text: confirmationMessage,
+  }).catch(() => false);
+
+  appointment.notificationPreviewMessage = confirmationMessage;
+  appointment.notificationDecision = "agenda_confirmation";
+  appointment.notificationChannel = "whatsapp";
+  appointment.notificationStatus = sent ? "sent" : "failed";
+  if (sent) {
+    appointment.notificationSentAt = new Date();
+    appointment.status = "confirmed";
+  }
+  await appointment.save();
+
+  if (!sent) {
+    return res.status(503).json({
+      sent: false,
+      message:
+        "Nao foi possivel enviar a confirmacao da agenda agora. Verifique a conexao do WhatsApp.",
+    });
+  }
+
+  return res.json({
+    sent: true,
+    message: "Mensagem de confirmacao enviada e agendamento confirmado.",
+    appointment,
+  });
+});
+
 const deleteAppointment = asyncHandler(async (req, res) => {
   const appointment = await Appointment.findById(req.params.id);
   if (!appointment) {
@@ -412,5 +533,7 @@ module.exports = {
   previewAppointmentMessage,
   listAppointments,
   updateAppointment,
+  resendAppointmentTemplateMessage,
+  sendAgendaConfirmationMessage,
   deleteAppointment,
 };

@@ -4,6 +4,8 @@ const {
   previewAppointmentMessage,
   listAppointments,
   updateAppointment,
+  resendAppointmentTemplateMessage,
+  sendAgendaConfirmationMessage,
   deleteAppointment,
 } = require("../controllers/appointmentController");
 const { requireAuth } = require("../middlewares/auth");
@@ -14,6 +16,8 @@ router.use(requireAuth);
 router.get("/", listAppointments);
 router.post("/preview-message", previewAppointmentMessage);
 router.post("/", createAppointment);
+router.post("/:id/resend-template", resendAppointmentTemplateMessage);
+router.post("/:id/send-confirmation", sendAgendaConfirmationMessage);
 router.put("/:id", updateAppointment);
 router.delete("/:id", deleteAppointment);
 

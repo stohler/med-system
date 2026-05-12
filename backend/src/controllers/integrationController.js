@@ -7,6 +7,7 @@ const {
   getGoogleAuthUrl,
   getGoogleTokens,
   saveGoogleTokensForUser,
+  getValidGoogleTokensForUser,
   getGoogleConnectionStatusForUser,
   clearGoogleTokensForUser,
 } = require("../services/googleCalendarService");
@@ -508,6 +509,7 @@ const googleTokenExchange = asyncHandler(async (req, res) => {
 });
 
 const googleStatus = asyncHandler(async (req, res) => {
+  await getValidGoogleTokensForUser(req.user);
   return res.json(getGoogleConnectionStatusForUser(req.user));
 });
 
