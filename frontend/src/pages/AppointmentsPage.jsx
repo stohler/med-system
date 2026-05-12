@@ -169,6 +169,7 @@ export function AppointmentsPage() {
     agendaGridEndHour: 19,
   });
   const [markingNoShow, setMarkingNoShow] = useState(false);
+  const [appointmentActionLoading, setAppointmentActionLoading] = useState("");
 
   const navigate = useNavigate();
   const locationRouter = useLocation();
@@ -422,6 +423,41 @@ export function AppointmentsPage() {
       setError(err?.response?.data?.message || "Nao foi possivel atualizar o agendamento");
     } finally {
       setMarkingNoShow(false);
+    }
+  };
+
+  const handleResendTemplate = async () => {
+    if (!selectedAppointment?._id) return;
+    setAppointmentActionLoading("resend-template");
+    setError("");
+    try {
+      const { data } = await api.post(`/appointments/${selectedAppointment._id}/resend-template`);
+      toast.success(data?.message || "Template reenviado com sucesso.");
+      await load();
+    } catch (err) {
+      setError(err?.response?.data?.message || "Nao foi possivel reenviar o template");
+    } finally {
+      setAppointmentActionLoading("");
+    }
+  };
+
+  const handleSendAgendaConfirmation = async () => {
+    if (!selectedAppointment?._id) return;
+    setAppointmentActionLoading("send-confirmation");
+    setError("");
+    try {
+      const { data } = await api.post(
+        `/appointments/${selectedAppointment._id}/send-confirmation`
+      );
+      toast.success(data?.message || "Confirmacao enviada com sucesso.");
+      await load();
+      setSelectedAppointment((prev) =>
+        prev ? { ...prev, status: "confirmed" } : prev
+      );
+    } catch (err) {
+      setError(err?.response?.data?.message || "Nao foi possivel enviar a confirmacao");
+    } finally {
+      setAppointmentActionLoading("");
     }
   };
 
@@ -1045,6 +1081,26 @@ export function AppointmentsPage() {
                 }}
               >
                 Atender paciente
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={Boolean(appointmentActionLoading)}
+                onClick={() => handleResendTemplate()}
+              >
+                {appointmentActionLoading === "resend-template"
+                  ? "Reenviando..."
+                  : "Reenviar template"}
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={Boolean(appointmentActionLoading)}
+                onClick={() => handleSendAgendaConfirmation()}
+              >
+                {appointmentActionLoading === "send-confirmation"
+                  ? "Enviando..."
+                  : "Enviar confirmacao agenda"}
               </button>
               {["scheduled", "confirmed"].includes(selectedAppointment.status) ? (
                 <button
