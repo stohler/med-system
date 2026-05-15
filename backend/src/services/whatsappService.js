@@ -559,31 +559,6 @@ function normalizeWhatsappServiceBaseUrl() {
   return base.replace(/\/+$/, "");
 }
 
-function summarizeWhatsappProviderPayload(data) {
-  if (!data || typeof data !== "object") return null;
-  const status = data.status && typeof data.status === "object" ? data.status : null;
-  const details = data.details && typeof data.details === "object" ? data.details : null;
-  return {
-    sent: data.sent === true,
-    message: data.message ? String(data.message) : "",
-    error: data.error === true,
-    status: status
-      ? {
-          ready: status.ready === true,
-          connectionState: String(status.connectionState || ""),
-          lastError: status.lastError ? String(status.lastError) : "",
-        }
-      : null,
-    details: details
-      ? {
-          normalizedPhone: String(details.normalizedPhone || ""),
-          providerConnectionState: String(details.providerConnectionState || ""),
-          providerMessage: String(details.providerMessage || ""),
-        }
-      : null,
-  };
-}
-
 function maskPhoneForLog(phone) {
   const digits = String(phone || "").replace(/\D/g, "");
   if (!digits) return "";
@@ -605,6 +580,7 @@ async function sendViaWhatsappService({ phone, text, webhookUrl }) {
 
   const token = String(env.whatsappServiceToken || "").trim();
   const resolvedWebhookUrl = resolveWhatsappWebhookUrl(webhookUrl);
+  const workerUrl = `${base}/test-message`;
   const payload = {
     phone,
     text,
@@ -612,7 +588,7 @@ async function sendViaWhatsappService({ phone, text, webhookUrl }) {
   };
   const response = await axios({
     method: "post",
-    url: `${base}/test-message`,
+    url: workerUrl,
     data: payload,
     timeout: 180000,
     headers: {
@@ -632,7 +608,10 @@ async function sendViaWhatsappService({ phone, text, webhookUrl }) {
     sent: Boolean(response?.data?.sent),
     provider: "service",
     httpStatus: Number(response?.status || 0),
-    providerPayload: summarizeWhatsappProviderPayload(response?.data),
+    providerPayload: response?.data ?? null,
+    workerRequestPayload: payload,
+    workerResponsePayload: response?.data ?? null,
+    workerUrl,
     webhookConfigured: Boolean(resolvedWebhookUrl),
   };
 }
@@ -664,18 +643,31 @@ async function sendWhatsappNotificationDetailed({ phone, text, webhookUrl, sourc
           phone: maskPhoneForLog(normalized),
           httpStatus: result.httpStatus,
           webhookConfigured: result.webhookConfigured,
+          workerUrl: result.workerUrl || "",
+          workerRequestPayload: result.workerRequestPayload || null,
+          workerResponsePayload: result.workerResponsePayload || null,
           providerPayload: result.providerPayload,
         });
       }
       return result;
     } catch (error) {
       const httpStatus = Number(error?.response?.status || 0);
-      const providerPayload = summarizeWhatsappProviderPayload(error?.response?.data);
+      const workerUrl = `${normalizeWhatsappServiceBaseUrl()}/test-message`;
+      const resolvedWebhookUrl = resolveWhatsappWebhookUrl(webhookUrl);
+      const workerRequestPayload = {
+        phone: normalized,
+        text,
+        ...(resolvedWebhookUrl ? { webhookUrl: resolvedWebhookUrl } : {}),
+      };
+      const providerPayload = error?.response?.data ?? null;
       logWhatsapp("error", "provider_service_send_error", {
         source,
         phone: maskPhoneForLog(normalized),
         httpStatus,
         error: error?.message || "unknown_error",
+        workerUrl,
+        workerRequestPayload,
+        workerResponsePayload: providerPayload,
         providerPayload,
       });
       return {
@@ -684,6 +676,9 @@ async function sendWhatsappNotificationDetailed({ phone, text, webhookUrl, sourc
         reason: "request_error",
         httpStatus,
         providerPayload,
+        workerUrl,
+        workerRequestPayload,
+        workerResponsePayload: providerPayload,
       };
     }
   }
@@ -694,7 +689,7 @@ async function sendWhatsappNotificationDetailed({ phone, text, webhookUrl, sourc
       return { sent: true, provider: "business" };
     } catch (error) {
       const httpStatus = Number(error?.response?.status || 0);
-      const providerPayload = summarizeWhatsappProviderPayload(error?.response?.data);
+      const providerPayload = error?.response?.data ?? null;
       logWhatsapp("error", "provider_business_send_error", {
         source,
         phone: maskPhoneForLog(normalized),
