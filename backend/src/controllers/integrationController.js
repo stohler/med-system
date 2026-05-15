@@ -669,6 +669,20 @@ const whatsappWebhook = asyncHandler(async (req, res) => {
 });
 
 const whatsappTestMessage = asyncHandler(async (req, res) => {
+  const logTestMessageOutput = (level, statusCode, payload, mode) => {
+    const logger =
+      level === "error" ? console.error : level === "warn" ? console.warn : console.log;
+    // eslint-disable-next-line no-console
+    logger(
+      "[integrations][whatsapp-test-message][response_json]",
+      JSON.stringify({
+        mode,
+        statusCode: Number(statusCode || 0),
+        output: payload ?? null,
+      })
+    );
+  };
+
   if (serviceEndpoint("/test-message")) {
     try {
       const response = await requestWhatsappExternalService(req, {
@@ -679,7 +693,7 @@ const whatsappTestMessage = asyncHandler(async (req, res) => {
       });
       const data = response?.data || {};
       if (isReadyButSendFailed(response?.status, data)) {
-        return res.status(422).json({
+        const output = {
           sent: false,
           message:
             "Servico WhatsApp conectado, mas nao conseguiu enviar a mensagem de teste. Verifique se o numero esta no formato DDI+DDD+numero (somente digitos) e se o contato possui WhatsApp ativo.",
@@ -689,17 +703,22 @@ const whatsappTestMessage = asyncHandler(async (req, res) => {
             providerMessage: data.message || "",
             providerConnectionState: data.status?.connectionState || "",
           },
-        });
+        };
+        logTestMessageOutput("warn", 422, output, "proxy_external_service");
+        return res.status(422).json(output);
       }
+      logTestMessageOutput("info", response.status, data, "proxy_external_service");
       return res.status(response.status).json(data);
     } catch (error) {
-      return res.status(503).json({
+      const output = {
         error: true,
         message:
           error?.message ||
           "Falha ao conectar com servico dedicado do WhatsApp.",
         details: null,
-      });
+      };
+      logTestMessageOutput("error", 503, output, "proxy_external_service");
+      return res.status(503).json(output);
     }
   }
 
@@ -709,26 +728,34 @@ const whatsappTestMessage = asyncHandler(async (req, res) => {
     "Teste de envio do sistema clinico.";
 
   if (!phone) {
-    return res.status(400).json({ sent: false, message: "Informe o numero para teste." });
+    const output = { sent: false, message: "Informe o numero para teste." };
+    logTestMessageOutput("warn", 400, output, "local_service");
+    return res.status(400).json(output);
   }
 
   try {
     const sent = await sendWhatsappNotification({ phone, text });
     if (!sent) {
-      return res.status(503).json({
+      const output = {
         sent: false,
         message:
           "WhatsApp ainda nao esta pronto para envio. Verifique status da conexao antes de testar.",
         status: getWhatsappStatus(),
-      });
+      };
+      logTestMessageOutput("warn", 503, output, "local_service");
+      return res.status(503).json(output);
     }
-    return res.json({ sent: true, message: "Mensagem de teste enviada com sucesso." });
+    const output = { sent: true, message: "Mensagem de teste enviada com sucesso." };
+    logTestMessageOutput("info", 200, output, "local_service");
+    return res.json(output);
   } catch (error) {
-    return res.status(503).json({
+    const output = {
       sent: false,
       message: error?.message || "Falha ao enviar mensagem de teste.",
       status: getWhatsappStatus(),
-    });
+    };
+    logTestMessageOutput("error", 503, output, "local_service");
+    return res.status(503).json(output);
   }
 });
 
