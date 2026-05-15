@@ -14,7 +14,9 @@ const {
   getValidGoogleTokensForUser,
   updateCalendarEvent,
 } = require("../services/googleCalendarService");
-const { sendWhatsappNotification } = require("../services/whatsappService");
+const {
+  sendWhatsappNotificationDetailed,
+} = require("../services/whatsappService");
 const { formatDisplayDate, formatDisplayTime } = require("../utils/displayTime");
 const {
   assertLocationAllowedForReception,
@@ -223,6 +225,25 @@ function resolveWhatsappWebhookUrl(req) {
   return `${proto}://${host}`.replace(/\/+$/, "") + "/api/integrations/whatsapp/webhook";
 }
 
+function logWhatsappSendFailure(action, appointment, phone, sendResult) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[appointments][whatsapp_send_failed]",
+    JSON.stringify({
+      action,
+      appointmentId: appointment?._id ? String(appointment._id) : "",
+      patientId: appointment?.patient?._id ? String(appointment.patient._id) : "",
+      phoneMasked: String(phone || "")
+        .replace(/\D/g, "")
+        .replace(/^(\d+)(\d{4})$/, (_m, head, tail) => `${"*".repeat(head.length)}${tail}`),
+      provider: sendResult?.provider || "",
+      reason: sendResult?.reason || "",
+      httpStatus: Number(sendResult?.httpStatus || 0),
+      providerPayload: sendResult?.providerPayload || null,
+    })
+  );
+}
+
 const createAppointment = asyncHandler(async (req, res) => {
   const payload = appointmentSchema.parse(req.body);
   const confirmMessage = confirmMessageSchema.parse(req.body.confirmMessage);
@@ -279,16 +300,19 @@ const createAppointment = asyncHandler(async (req, res) => {
         ProcedureType.findById(payload.procedureType),
       ]);
       if (patient?.phone && procedure?.appointmentConfirmationEnabled) {
-        const sent = await sendWhatsappNotification({
+        const sendResult = await sendWhatsappNotificationDetailed({
           phone: patient.phone,
           text: confirmMessage.text,
           webhookUrl: resolveWhatsappWebhookUrl(req),
-        }).catch(() => false);
+          source: "appointments:create",
+        }).catch(() => ({ sent: false, provider: "unknown", reason: "unexpected_exception" }));
+        const sent = Boolean(sendResult?.sent);
         if (sent) {
           appointment.notificationSentAt = new Date();
           appointment.notificationStatus = "sent";
         } else {
           appointment.notificationStatus = "failed";
+          logWhatsappSendFailure("create", populated, patient.phone, sendResult);
         }
       } else {
         appointment.notificationStatus = "skipped";
@@ -449,11 +473,13 @@ const resendAppointmentTemplateMessage = asyncHandler(async (req, res) => {
     throw new AppError("Envio de template desativado para este procedimento.", 400);
   }
 
-  const sent = await sendWhatsappNotification({
+  const sendResult = await sendWhatsappNotificationDetailed({
     phone: preview.patient.phone,
     text: preview.message,
     webhookUrl: resolveWhatsappWebhookUrl(req),
-  }).catch(() => false);
+    source: "appointments:resend-template",
+  }).catch(() => ({ sent: false, provider: "unknown", reason: "unexpected_exception" }));
+  const sent = Boolean(sendResult?.sent);
 
   appointment.notificationPreviewMessage = preview.message;
   appointment.notificationDecision = "resend_template";
@@ -465,6 +491,7 @@ const resendAppointmentTemplateMessage = asyncHandler(async (req, res) => {
   await appointment.save();
 
   if (!sent) {
+    logWhatsappSendFailure("resend-template", appointment, preview.patient.phone, sendResult);
     return res.status(503).json({
       sent: false,
       message:
@@ -499,11 +526,13 @@ const sendAgendaConfirmationMessage = asyncHandler(async (req, res) => {
     procedure: appointment.procedureType,
     location: appointment.location,
   });
-  const sent = await sendWhatsappNotification({
+  const sendResult = await sendWhatsappNotificationDetailed({
     phone: appointment.patient.phone,
     text: confirmationMessage,
     webhookUrl: resolveWhatsappWebhookUrl(req),
-  }).catch(() => false);
+    source: "appointments:send-confirmation",
+  }).catch(() => ({ sent: false, provider: "unknown", reason: "unexpected_exception" }));
+  const sent = Boolean(sendResult?.sent);
 
   appointment.notificationPreviewMessage = confirmationMessage;
   appointment.notificationDecision = "agenda_confirmation";
@@ -516,6 +545,7 @@ const sendAgendaConfirmationMessage = asyncHandler(async (req, res) => {
   await appointment.save();
 
   if (!sent) {
+    logWhatsappSendFailure("send-confirmation", appointment, appointment.patient.phone, sendResult);
     return res.status(503).json({
       sent: false,
       message:

@@ -559,6 +559,38 @@ function normalizeWhatsappServiceBaseUrl() {
   return base.replace(/\/+$/, "");
 }
 
+function summarizeWhatsappProviderPayload(data) {
+  if (!data || typeof data !== "object") return null;
+  const status = data.status && typeof data.status === "object" ? data.status : null;
+  const details = data.details && typeof data.details === "object" ? data.details : null;
+  return {
+    sent: data.sent === true,
+    message: data.message ? String(data.message) : "",
+    error: data.error === true,
+    status: status
+      ? {
+          ready: status.ready === true,
+          connectionState: String(status.connectionState || ""),
+          lastError: status.lastError ? String(status.lastError) : "",
+        }
+      : null,
+    details: details
+      ? {
+          normalizedPhone: String(details.normalizedPhone || ""),
+          providerConnectionState: String(details.providerConnectionState || ""),
+          providerMessage: String(details.providerMessage || ""),
+        }
+      : null,
+  };
+}
+
+function maskPhoneForLog(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length <= 4) return digits;
+  return `${"*".repeat(digits.length - 4)}${digits.slice(-4)}`;
+}
+
 function resolveWhatsappWebhookUrl(webhookUrl) {
   const explicit = String(webhookUrl || env.whatsappWebhookUrl || "").trim();
   if (explicit) return explicit;
@@ -596,31 +628,141 @@ async function sendViaWhatsappService({ phone, text, webhookUrl }) {
     validateStatus: () => true,
   });
 
-  return Boolean(response?.data?.sent);
+  return {
+    sent: Boolean(response?.data?.sent),
+    provider: "service",
+    httpStatus: Number(response?.status || 0),
+    providerPayload: summarizeWhatsappProviderPayload(response?.data),
+    webhookConfigured: Boolean(resolvedWebhookUrl),
+  };
 }
 
-async function sendWhatsappNotification({ phone, text, webhookUrl }) {
-  if (!env.whatsappEnabled || !phone || !text) return false;
+async function sendWhatsappNotificationDetailed({ phone, text, webhookUrl, source = "unknown" }) {
+  if (!env.whatsappEnabled || !phone || !text) {
+    return {
+      sent: false,
+      provider: "none",
+      reason: "invalid_payload_or_disabled",
+    };
+  }
 
   const normalized = normalizeWhatsappPhone(phone);
-  if (!normalized) return false;
+  if (!normalized) {
+    return {
+      sent: false,
+      provider: "none",
+      reason: "invalid_phone",
+    };
+  }
 
   if (normalizeWhatsappServiceBaseUrl()) {
-    return sendViaWhatsappService({
-      phone: normalized,
-      text,
-      webhookUrl,
-    }).catch(() => false);
+    try {
+      const result = await sendViaWhatsappService({ phone: normalized, text, webhookUrl });
+      if (!result.sent) {
+        logWhatsapp("warn", "provider_service_send_failed", {
+          source,
+          phone: maskPhoneForLog(normalized),
+          httpStatus: result.httpStatus,
+          webhookConfigured: result.webhookConfigured,
+          providerPayload: result.providerPayload,
+        });
+      }
+      return result;
+    } catch (error) {
+      const httpStatus = Number(error?.response?.status || 0);
+      const providerPayload = summarizeWhatsappProviderPayload(error?.response?.data);
+      logWhatsapp("error", "provider_service_send_error", {
+        source,
+        phone: maskPhoneForLog(normalized),
+        httpStatus,
+        error: error?.message || "unknown_error",
+        providerPayload,
+      });
+      return {
+        sent: false,
+        provider: "service",
+        reason: "request_error",
+        httpStatus,
+        providerPayload,
+      };
+    }
   }
 
   if (env.whatsappMode === "business") {
-    return sendViaWhatsappBusiness({ phone: normalized, text });
+    try {
+      await sendViaWhatsappBusiness({ phone: normalized, text });
+      return { sent: true, provider: "business" };
+    } catch (error) {
+      const httpStatus = Number(error?.response?.status || 0);
+      const providerPayload = summarizeWhatsappProviderPayload(error?.response?.data);
+      logWhatsapp("error", "provider_business_send_error", {
+        source,
+        phone: maskPhoneForLog(normalized),
+        httpStatus,
+        error: error?.message || "unknown_error",
+        providerPayload,
+      });
+      return {
+        sent: false,
+        provider: "business",
+        reason: "request_error",
+        httpStatus,
+        providerPayload,
+      };
+    }
   }
 
-  if (!ready || !client) return false;
+  if (!ready || !client) {
+    const status = getWhatsappStatus();
+    logWhatsapp("warn", "provider_web_not_ready", {
+      source,
+      phone: maskPhoneForLog(normalized),
+      status: {
+        ready: status.ready,
+        connectionState: status.connectionState,
+        lastError: status.lastError,
+      },
+    });
+    return {
+      sent: false,
+      provider: "web",
+      reason: "not_ready",
+      providerPayload: {
+        status: {
+          ready: status.ready,
+          connectionState: status.connectionState,
+          lastError: status.lastError || "",
+        },
+      },
+    };
+  }
 
-  await client.sendMessage(`${normalized}@c.us`, text);
-  return true;
+  try {
+    await client.sendMessage(`${normalized}@c.us`, text);
+    return { sent: true, provider: "web" };
+  } catch (error) {
+    logWhatsapp("error", "provider_web_send_error", {
+      source,
+      phone: maskPhoneForLog(normalized),
+      error: error?.message || "unknown_error",
+    });
+    return {
+      sent: false,
+      provider: "web",
+      reason: "send_error",
+      providerPayload: { message: error?.message || "unknown_error" },
+    };
+  }
+}
+
+async function sendWhatsappNotification({ phone, text, webhookUrl }) {
+  const result = await sendWhatsappNotificationDetailed({
+    phone,
+    text,
+    webhookUrl,
+    source: "generic",
+  });
+  return Boolean(result?.sent);
 }
 
 module.exports = {
@@ -630,4 +772,5 @@ module.exports = {
   restartWhatsApp,
   resetWhatsAppSession,
   sendWhatsappNotification,
+  sendWhatsappNotificationDetailed,
 };
