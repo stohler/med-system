@@ -669,6 +669,18 @@ const whatsappWebhook = asyncHandler(async (req, res) => {
 });
 
 const whatsappTestMessage = asyncHandler(async (req, res) => {
+  const logTestMessageRequestPayload = (mode, payload, forwardedPayload = null) => {
+    // eslint-disable-next-line no-console
+    console.log(
+      "[integrations][whatsapp-test-message][request_payload]",
+      JSON.stringify({
+        mode,
+        payload: payload ?? null,
+        forwardedPayload: forwardedPayload ?? null,
+      })
+    );
+  };
+
   const logTestMessageOutput = (level, statusCode, payload, mode) => {
     const logger =
       level === "error" ? console.error : level === "warn" ? console.warn : console.log;
@@ -684,6 +696,12 @@ const whatsappTestMessage = asyncHandler(async (req, res) => {
   };
 
   if (serviceEndpoint("/test-message")) {
+    const webhookUrl = resolveWebhookUrl(req);
+    const forwardedPayload = {
+      ...(req.body || {}),
+      ...(webhookUrl ? { webhookUrl } : {}),
+    };
+    logTestMessageRequestPayload("proxy_external_service", req.body || null, forwardedPayload);
     try {
       const response = await requestWhatsappExternalService(req, {
         method: "post",
@@ -726,6 +744,7 @@ const whatsappTestMessage = asyncHandler(async (req, res) => {
   const text =
     String(req.body.text || "").trim() ||
     "Teste de envio do sistema clinico.";
+  logTestMessageRequestPayload("local_service", req.body || null, { phone, text });
 
   if (!phone) {
     const output = { sent: false, message: "Informe o numero para teste." };
