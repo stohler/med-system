@@ -239,6 +239,9 @@ function logWhatsappSendFailure(action, appointment, phone, sendResult) {
       provider: sendResult?.provider || "",
       reason: sendResult?.reason || "",
       httpStatus: Number(sendResult?.httpStatus || 0),
+      workerUrl: sendResult?.workerUrl || "",
+      workerRequestPayload: sendResult?.workerRequestPayload || null,
+      workerResponsePayload: sendResult?.workerResponsePayload || null,
       providerPayload: sendResult?.providerPayload || null,
     })
   );

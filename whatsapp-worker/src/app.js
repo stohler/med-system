@@ -104,6 +104,11 @@ function createApp() {
   });
 
   app.post("/test-message", async (req, res) => {
+    // eslint-disable-next-line no-console
+    console.log(
+      "[whatsapp-worker][test-message][request_payload]",
+      JSON.stringify(req.body || null)
+    );
     const phone = String(req.body.phone || "").trim();
     const text =
       String(req.body.text || "").trim() ||
@@ -115,6 +120,15 @@ function createApp() {
 
     const sent = await sendWhatsappNotification({ phone, text }).catch(() => false);
     if (!sent) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[whatsapp-worker][test-message][send_failed]",
+        JSON.stringify({
+          requestPayload: req.body || null,
+          computedPayload: { phone, text },
+          status: getWhatsappStatus(),
+        })
+      );
       return res.status(503).json({
         sent: false,
         message:
