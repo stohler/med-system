@@ -5,11 +5,15 @@ on:
     branches:
       - main
       - develop
-      - cursor/sistema-de-gest-o-cl-nica-2da0
     paths:
       - "backend/**"
       - ".github/workflows/deploy-gcp-cloud-run.yml"
   workflow_dispatch:
+    inputs:
+      target_ref:
+        description: "Branch ou tag para deploy manual (opcional)"
+        required: false
+        type: string
 
 env:
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
@@ -28,6 +32,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.target_ref || github.ref_name }}
+
+      - name: Resolve source SHA
+        run: echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Auth GCP
         uses: google-github-actions/auth@v2
@@ -57,7 +66,7 @@ jobs:
           GAR_REPO_CLEAN="${{ env.GAR_REPOSITORY }}"
           GAR_REPO_CLEAN="${GAR_REPO_CLEAN#/}"
           GAR_REPO_CLEAN="${GAR_REPO_CLEAN%/}"
-          IMAGE_URI="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${GAR_REPO_CLEAN}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          IMAGE_URI="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${GAR_REPO_CLEAN}/${{ env.IMAGE_NAME }}:${{ env.SOURCE_SHA }}"
           docker build -t "${IMAGE_URI}" ./backend
           docker push "${IMAGE_URI}"
           echo "IMAGE_URI=${IMAGE_URI}" >> "$GITHUB_ENV"
