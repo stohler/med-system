@@ -559,16 +559,30 @@ function normalizeWhatsappServiceBaseUrl() {
   return base.replace(/\/+$/, "");
 }
 
-async function sendViaWhatsappService({ phone, text }) {
+function resolveWhatsappWebhookUrl(webhookUrl) {
+  const explicit = String(webhookUrl || env.whatsappWebhookUrl || "").trim();
+  if (explicit) return explicit;
+  const publicApi = String(env.publicApiUrl || "").trim();
+  if (!publicApi) return "";
+  return `${publicApi.replace(/\/+$/, "")}/api/integrations/whatsapp/webhook`;
+}
+
+async function sendViaWhatsappService({ phone, text, webhookUrl }) {
   const base = normalizeWhatsappServiceBaseUrl();
   if (!base) return false;
 
   const token = String(env.whatsappServiceToken || "").trim();
+  const resolvedWebhookUrl = resolveWhatsappWebhookUrl(webhookUrl);
+  const payload = {
+    phone,
+    text,
+    ...(resolvedWebhookUrl ? { webhookUrl: resolvedWebhookUrl } : {}),
+  };
   const response = await axios({
     method: "post",
     url: `${base}/test-message`,
-    data: { phone, text },
-    timeout: 20000,
+    data: payload,
+    timeout: 180000,
     headers: {
       "Content-Type": "application/json",
       ...(token
@@ -585,14 +599,18 @@ async function sendViaWhatsappService({ phone, text }) {
   return Boolean(response?.data?.sent);
 }
 
-async function sendWhatsappNotification({ phone, text }) {
+async function sendWhatsappNotification({ phone, text, webhookUrl }) {
   if (!env.whatsappEnabled || !phone || !text) return false;
 
   const normalized = normalizeWhatsappPhone(phone);
   if (!normalized) return false;
 
   if (normalizeWhatsappServiceBaseUrl()) {
-    return sendViaWhatsappService({ phone: normalized, text }).catch(() => false);
+    return sendViaWhatsappService({
+      phone: normalized,
+      text,
+      webhookUrl,
+    }).catch(() => false);
   }
 
   if (env.whatsappMode === "business") {

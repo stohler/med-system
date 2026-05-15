@@ -20,6 +20,7 @@ const {
   assertLocationAllowedForReception,
   normalizedAllowedLocationIds,
 } = require("../utils/locationAccess");
+const { env } = require("../config/env");
 
 const CONSULTATION_REMINDER_KEY = "consultation_reminder_1_day_before";
 const BRL_FORMATTER = new Intl.NumberFormat("pt-BR", {
@@ -212,6 +213,16 @@ function buildAgendaConfirmationMessage({ appointment, patient, procedure, locat
   ].join("\n");
 }
 
+function resolveWhatsappWebhookUrl(req) {
+  const explicit = String(env.whatsappWebhookUrl || "").trim();
+  if (explicit) return explicit;
+
+  const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
+  const host = req.headers["x-forwarded-host"] || req.get("host") || "";
+  if (!host) return "";
+  return `${proto}://${host}`.replace(/\/+$/, "") + "/api/integrations/whatsapp/webhook";
+}
+
 const createAppointment = asyncHandler(async (req, res) => {
   const payload = appointmentSchema.parse(req.body);
   const confirmMessage = confirmMessageSchema.parse(req.body.confirmMessage);
@@ -271,6 +282,7 @@ const createAppointment = asyncHandler(async (req, res) => {
         const sent = await sendWhatsappNotification({
           phone: patient.phone,
           text: confirmMessage.text,
+          webhookUrl: resolveWhatsappWebhookUrl(req),
         }).catch(() => false);
         if (sent) {
           appointment.notificationSentAt = new Date();
@@ -440,6 +452,7 @@ const resendAppointmentTemplateMessage = asyncHandler(async (req, res) => {
   const sent = await sendWhatsappNotification({
     phone: preview.patient.phone,
     text: preview.message,
+    webhookUrl: resolveWhatsappWebhookUrl(req),
   }).catch(() => false);
 
   appointment.notificationPreviewMessage = preview.message;
@@ -489,6 +502,7 @@ const sendAgendaConfirmationMessage = asyncHandler(async (req, res) => {
   const sent = await sendWhatsappNotification({
     phone: appointment.patient.phone,
     text: confirmationMessage,
+    webhookUrl: resolveWhatsappWebhookUrl(req),
   }).catch(() => false);
 
   appointment.notificationPreviewMessage = confirmationMessage;
