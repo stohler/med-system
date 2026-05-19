@@ -1,0 +1,14 @@
+module.exports = {
+  User: require("./User"),
+  Patient: require("./Patient"),
+  WhatsAppMessage: require("./WhatsAppMessage"),
+  ClinicLocation: require("./ClinicLocation"),
+  ProcedureType: require("./ProcedureType"),
+  MessageTemplate: require("./MessageTemplate"),
+  Appointment: require("./Appointment"),
+  Encounter: require("./Encounter"),
+  ExamResult: require("./ExamResult"),
+  Prescription: require("./Prescription"),
+  AuditLog: require("./AuditLog"),
+  Consent: require("./Consent"),
+};
