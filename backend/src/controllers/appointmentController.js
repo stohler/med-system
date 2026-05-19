@@ -575,6 +575,54 @@ const deleteAppointment = asyncHandler(async (req, res) => {
   res.status(204).send();
 });
 
+const resendAppointmentTemplate = asyncHandler(async (req, res) => {
+  const appointment = await Appointment.findById(req.params.id).populate([
+    "patient",
+    "location",
+    "procedureType",
+  ]);
+  if (!appointment) {
+    throw new NotFoundError("Agendamento nao encontrado");
+  }
+
+  const patient = appointment.patient;
+  const procedure = appointment.procedureType;
+  if (!patient?.phone) {
+    throw new AppError("Paciente sem telefone para envio", 400);
+  }
+  if (!procedure?.appointmentConfirmationEnabled) {
+    throw new AppError("Envio de confirmacao desativado para este procedimento", 400);
+  }
+
+  const preview = await buildAppointmentMessage({
+    patient: patient._id,
+    location: appointment.location?._id || appointment.location,
+    procedureType: procedure._id,
+    startsAt: appointment.startsAt,
+    endsAt: appointment.endsAt,
+    notes: appointment.notes || "",
+  });
+
+  const sent = await sendWhatsappNotification({
+    phone: patient.phone,
+    text: preview.message,
+  }).catch(() => false);
+
+  appointment.notificationPreviewMessage = preview.message;
+  appointment.notificationDecision = "send";
+  appointment.notificationChannel = "whatsapp";
+  appointment.notificationStatus = sent ? "sent" : "failed";
+  appointment.notificationSentAt = sent ? new Date() : appointment.notificationSentAt || null;
+  await appointment.save();
+
+  res.json({
+    sent,
+    canSend: preview.canSend,
+    message: preview.message,
+    appointment,
+  });
+});
+
 module.exports = {
   createAppointment,
   previewAppointmentMessage,
@@ -583,4 +631,5 @@ module.exports = {
   resendAppointmentTemplateMessage,
   sendAgendaConfirmationMessage,
   deleteAppointment,
+  resendAppointmentTemplate,
 };

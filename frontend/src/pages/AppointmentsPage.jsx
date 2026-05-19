@@ -644,6 +644,7 @@ export function AppointmentsPage() {
                 <tr>
                   <td>${escapeHtml(period)}</td>
                   <td>${escapeHtml(item.patient?.fullName || "Sem paciente")}</td>
+                  <td>${escapeHtml(item.patient?.phone || "-")}</td>
                   <td>${escapeHtml(item.procedureType?.name || "Sem procedimento")}</td>
                   <td>${escapeHtml(item.location?.name || "Sem local")}</td>
                   <td>${escapeHtml(item.notes || "-")}</td>
@@ -653,7 +654,7 @@ export function AppointmentsPage() {
             .join("")
         : `
           <tr>
-            <td colspan="5">Nenhum agendamento para este dia.</td>
+            <td colspan="6">Nenhum agendamento para este dia.</td>
           </tr>
         `;
 
@@ -681,6 +682,7 @@ export function AppointmentsPage() {
               <tr>
                 <th>Horario</th>
                 <th>Paciente</th>
+                <th>Telefone</th>
                 <th>Procedimento</th>
                 <th>Endereco</th>
                 <th>Observacoes</th>
