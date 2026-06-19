@@ -46,8 +46,6 @@ Secrets de aplicação (backend):
 - `WHATSAPP_SERVICE_BASE_URL` (ex: `https://api-sandbox.moneri.com.br/v1/whatsapp-service`)
 - `WHATSAPP_SERVICE_TOKEN` (se o servico exigir autenticacao)
 
-> Compatibilidade: `WHATSAPP_WORKER_URL` e `WHATSAPP_WORKER_TOKEN` ainda podem ser usados como alias.
-
 Secrets para build do frontend:
 
 - `FRONTEND_API_URL` (ex: `https://med-api.stohler.com.br/api`)
@@ -72,6 +70,7 @@ Cloud Run não inclui banco Mongo gerenciado no free tier. Opções comuns:
 - O projeto está configurado para `WHATSAPP_MODE=web` por padrão
 - Em Cloud Run, sessão local/arquivo pode ser efêmera
 - Para produção mais estável com múltiplas réplicas, recomendado usar `WHATSAPP_MODE=business`
+- As rotas de WhatsApp do backend usam `WHATSAPP_SERVICE_BASE_URL`; o deploy dedicado do antigo `whatsapp-worker` não é mais configurado.
 
 ## 6) Domínios customizados (med.stohler.com.br / med-api.stohler.com.br)
 

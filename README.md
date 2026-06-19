@@ -189,42 +189,6 @@ No deploy do backend, configure:
 
 Quando `WHATSAPP_SERVICE_BASE_URL` estiver definido, o backend encaminha as chamadas de WhatsApp para esse endpoint externo.
 
-> Compatibilidade retroativa: `WHATSAPP_WORKER_URL` e `WHATSAPP_WORKER_TOKEN` continuam funcionando como alias.
-
-## Deploy do WhatsApp Worker dedicado (Cloud Run) [opcional]
-
-Foi adicionado workflow em:
-
-`/.github/workflows/deploy-whatsapp-worker-cloud-run.yml`
-
-Esse servico e separado do backend e mantem a sessao WhatsApp Web no proprio worker.
-Para estabilidade do WhatsApp Web no Cloud Run, o deploy do worker usa:
-
-- `min-instances=1`
-- `max-instances=1`
-- `concurrency=1`
-- `cpu=2`
-- `memory=2Gi`
-- `--no-cpu-throttling` (CPU sempre alocada)
-
-### Secrets do GitHub para worker
-
-- `GCP_PROJECT_ID`
-- `GCP_REGION`
-- `GCP_ARTIFACT_REPO`
-- `GCP_WHATSAPP_WORKER_SERVICE_NAME` (ex.: `med-system-whatsapp-worker`)
-- `GCP_SA_KEY`
-- `WHATSAPP_WORKER_TOKEN` (token compartilhado com o backend)
-
-### Configuracao no backend para usar o worker
-
-No deploy do backend, configure:
-
-- `WHATSAPP_SERVICE_BASE_URL=https://<url-do-worker>`
-- `WHATSAPP_SERVICE_TOKEN=<mesmo-token-do-worker>`
-
-Quando `WHATSAPP_SERVICE_BASE_URL` estiver definido, as rotas de integracao WhatsApp do backend passam a atuar como proxy para o servico configurado.
-
 ## Deploy do frontend no Cloud Run
 
 Foi adicionado workflow em:
