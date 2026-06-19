@@ -1,19 +1,14 @@
 import { Link, NavLink } from "react-router-dom";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { LogOut } from "lucide-react";
 import { useAuth } from "../state";
-
-const links = [
-  { to: "/", label: "Agenda", icon: "AG" },
-  { to: "/patients", label: "Pacientes", icon: "PA" },
-  { to: "/encounters", label: "Atendimento", icon: "AT" },
-  { to: "/reports", label: "Relatorios", icon: "RE" },
-  { to: "/settings", label: "Configuracoes", icon: "CF" },
-  { to: "/integrations", label: "Integracoes", icon: "IN" },
-];
+import { navItemsForRole } from "../navConfig";
 
 export function Layout({ children }) {
   const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(true);
+
+  const links = useMemo(() => navItemsForRole(user?.role || "assistant"), [user?.role]);
 
   return (
     <div className="app-shell side-menu-layout">
@@ -38,21 +33,28 @@ export function Layout({ children }) {
         </div>
 
         <nav className="side-nav">
-          {links.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) => (isActive ? "active" : "")}
-              title={item.label}
-            >
-              <span className="menu-icon">{item.icon}</span>
-              {!collapsed ? <span>{item.label}</span> : null}
-            </NavLink>
-          ))}
+          {links.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) => (isActive ? "active" : "")}
+                title={item.label}
+              >
+                <span className="menu-icon" aria-hidden>
+                  <Icon size={18} strokeWidth={2} />
+                </span>
+                {!collapsed ? <span>{item.label}</span> : null}
+              </NavLink>
+            );
+          })}
         </nav>
 
         <button type="button" onClick={logout} className="btn-ghost menu-logout" title="Sair">
-          <span className="menu-icon">SA</span>
+          <span className="menu-icon" aria-hidden>
+            <LogOut size={18} strokeWidth={2} />
+          </span>
           {!collapsed ? <span>Sair</span> : null}
         </button>
       </aside>

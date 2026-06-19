@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { useAuth } from "../state";
 
 const BRL = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -37,7 +38,11 @@ const emptyProcedure = {
   preparationInfoUrl: "",
 };
 
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, index) => index);
+
 export function SettingsPage() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [locations, setLocations] = useState([]);
   const [procedures, setProcedures] = useState([]);
   const [locationForm, setLocationForm] = useState(emptyLocation);
@@ -51,18 +56,33 @@ export function SettingsPage() {
   const [templateForm, setTemplateForm] = useState({
     consultationReminder1Day: "",
   });
+  const [gridPrefsForm, setGridPrefsForm] = useState({
+    agendaGridStartHour: 7,
+    agendaGridEndHour: 19,
+  });
 
   const load = async () => {
-    const [l, p, templates] = await Promise.all([
+    const [l, p, templates, prefsRes] = await Promise.all([
       api.get("/locations"),
       api.get("/procedures"),
       api.get("/message-templates"),
+      api.get("/clinic-preferences").catch(() => ({ data: {} })),
     ]);
     setLocations(l.data.locations || []);
     setProcedures(p.data.procedures || []);
     const consultationReminder1Day =
       templates.data.templates?.consultationReminder1Day?.content || "";
     setTemplateForm({ consultationReminder1Day });
+    const prefs = prefsRes?.data;
+    if (
+      typeof prefs?.agendaGridStartHour === "number" &&
+      typeof prefs?.agendaGridEndHour === "number"
+    ) {
+      setGridPrefsForm({
+        agendaGridStartHour: prefs.agendaGridStartHour,
+        agendaGridEndHour: prefs.agendaGridEndHour,
+      });
+    }
   };
 
   useEffect(() => {
@@ -124,6 +144,30 @@ export function SettingsPage() {
       preparationInfoUrl: procedure.preparationInfoUrl || "",
     });
     setShowProcedureForm(true);
+  };
+
+  const saveGridPreferences = async (event) => {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    if (!isAdmin) {
+      setError("Apenas administrador pode alterar a grade da agenda.");
+      return;
+    }
+    if (gridPrefsForm.agendaGridStartHour >= gridPrefsForm.agendaGridEndHour) {
+      setError("O horario inicial deve ser menor que o final.");
+      return;
+    }
+    try {
+      await api.put("/clinic-preferences", {
+        agendaGridStartHour: Number(gridPrefsForm.agendaGridStartHour),
+        agendaGridEndHour: Number(gridPrefsForm.agendaGridEndHour),
+      });
+      setMessage("Horarios da grade da agenda atualizados.");
+      await load();
+    } catch (err) {
+      setError(err?.response?.data?.message || "Nao foi possivel salvar preferencias da grade.");
+    }
   };
 
   const saveMessageTemplates = async (event) => {
@@ -234,6 +278,64 @@ export function SettingsPage() {
 
       {error ? <p className="error">{error}</p> : null}
       {message ? <p className="success">{message}</p> : null}
+
+      <div className="card">
+        <div className="table-header">
+          <h3>Grade da agenda</h3>
+        </div>
+        <form className="form-grid" onSubmit={saveGridPreferences}>
+          <p className="muted">
+            Define o intervalo de horarios exibidos na agenda (passos de 30 minutos). Valores
+            padrao: 7h a 19h.
+          </p>
+          <label>
+            Primeiro horario (hora cheia)
+            <select
+              value={gridPrefsForm.agendaGridStartHour}
+              disabled={!isAdmin}
+              onChange={(e) =>
+                setGridPrefsForm((prev) => ({
+                  ...prev,
+                  agendaGridStartHour: Number(e.target.value),
+                }))
+              }
+            >
+              {HOUR_OPTIONS.map((h) => (
+                <option key={`start-${h}`} value={h}>
+                  {String(h).padStart(2, "0")}:00
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Ultimo horario visivel na grade
+            <select
+              value={gridPrefsForm.agendaGridEndHour}
+              disabled={!isAdmin}
+              onChange={(e) =>
+                setGridPrefsForm((prev) => ({
+                  ...prev,
+                  agendaGridEndHour: Number(e.target.value),
+                }))
+              }
+            >
+              {HOUR_OPTIONS.map((h) => (
+                <option key={`end-${h}`} value={h}>
+                  {String(h).padStart(2, "0")}:00
+                </option>
+              ))}
+            </select>
+          </label>
+          {!isAdmin ? (
+            <p className="muted">Somente administrador pode alterar estes valores.</p>
+          ) : null}
+          <div className="inline-actions">
+            <button type="submit" disabled={!isAdmin}>
+              Salvar grade
+            </button>
+          </div>
+        </form>
+      </div>
 
       <div className="card">
         <div className="table-header">

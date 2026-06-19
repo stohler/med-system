@@ -559,16 +559,38 @@ function normalizeWhatsappServiceBaseUrl() {
   return base.replace(/\/+$/, "");
 }
 
-async function sendViaWhatsappService({ phone, text }) {
+function maskPhoneForLog(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length <= 4) return digits;
+  return `${"*".repeat(digits.length - 4)}${digits.slice(-4)}`;
+}
+
+function resolveWhatsappWebhookUrl(webhookUrl) {
+  const explicit = String(webhookUrl || env.whatsappWebhookUrl || "").trim();
+  if (explicit) return explicit;
+  const publicApi = String(env.publicApiUrl || "").trim();
+  if (!publicApi) return "";
+  return `${publicApi.replace(/\/+$/, "")}/api/integrations/whatsapp/webhook`;
+}
+
+async function sendViaWhatsappService({ phone, text, webhookUrl }) {
   const base = normalizeWhatsappServiceBaseUrl();
   if (!base) return false;
 
   const token = String(env.whatsappServiceToken || "").trim();
+  const resolvedWebhookUrl = resolveWhatsappWebhookUrl(webhookUrl);
+  const workerUrl = `${base}/test-message`;
+  const payload = {
+    phone,
+    text,
+    ...(resolvedWebhookUrl ? { webhookUrl: resolvedWebhookUrl } : {}),
+  };
   const response = await axios({
     method: "post",
-    url: `${base}/test-message`,
-    data: { phone, text },
-    timeout: 20000,
+    url: workerUrl,
+    data: payload,
+    timeout: 180000,
     headers: {
       "Content-Type": "application/json",
       ...(token
@@ -581,27 +603,160 @@ async function sendViaWhatsappService({ phone, text }) {
     validateStatus: () => true,
   });
 
-  return Boolean(response?.data?.sent);
+  return {
+    sent: Boolean(response?.data?.sent),
+    provider: "service",
+    httpStatus: Number(response?.status || 0),
+    providerPayload: response?.data ?? null,
+    workerRequestPayload: payload,
+    workerResponsePayload: response?.data ?? null,
+    workerUrl,
+    webhookConfigured: Boolean(resolvedWebhookUrl),
+  };
 }
 
-async function sendWhatsappNotification({ phone, text }) {
-  if (!env.whatsappEnabled || !phone || !text) return false;
+async function sendWhatsappNotificationDetailed({ phone, text, webhookUrl, source = "unknown" }) {
+  if (!env.whatsappEnabled || !phone || !text) {
+    return {
+      sent: false,
+      provider: "none",
+      reason: "invalid_payload_or_disabled",
+    };
+  }
 
   const normalized = normalizeWhatsappPhone(phone);
-  if (!normalized) return false;
+  if (!normalized) {
+    return {
+      sent: false,
+      provider: "none",
+      reason: "invalid_phone",
+    };
+  }
 
   if (normalizeWhatsappServiceBaseUrl()) {
-    return sendViaWhatsappService({ phone: normalized, text }).catch(() => false);
+    try {
+      const result = await sendViaWhatsappService({ phone: normalized, text, webhookUrl });
+      if (!result.sent) {
+        logWhatsapp("warn", "provider_service_send_failed", {
+          source,
+          phone: maskPhoneForLog(normalized),
+          httpStatus: result.httpStatus,
+          webhookConfigured: result.webhookConfigured,
+          workerUrl: result.workerUrl || "",
+          workerRequestPayload: result.workerRequestPayload || null,
+          workerResponsePayload: result.workerResponsePayload || null,
+          providerPayload: result.providerPayload,
+        });
+      }
+      return result;
+    } catch (error) {
+      const httpStatus = Number(error?.response?.status || 0);
+      const workerUrl = `${normalizeWhatsappServiceBaseUrl()}/test-message`;
+      const resolvedWebhookUrl = resolveWhatsappWebhookUrl(webhookUrl);
+      const workerRequestPayload = {
+        phone: normalized,
+        text,
+        ...(resolvedWebhookUrl ? { webhookUrl: resolvedWebhookUrl } : {}),
+      };
+      const providerPayload = error?.response?.data ?? null;
+      logWhatsapp("error", "provider_service_send_error", {
+        source,
+        phone: maskPhoneForLog(normalized),
+        httpStatus,
+        error: error?.message || "unknown_error",
+        workerUrl,
+        workerRequestPayload,
+        workerResponsePayload: providerPayload,
+        providerPayload,
+      });
+      return {
+        sent: false,
+        provider: "service",
+        reason: "request_error",
+        httpStatus,
+        providerPayload,
+        workerUrl,
+        workerRequestPayload,
+        workerResponsePayload: providerPayload,
+      };
+    }
   }
 
   if (env.whatsappMode === "business") {
-    return sendViaWhatsappBusiness({ phone: normalized, text });
+    try {
+      await sendViaWhatsappBusiness({ phone: normalized, text });
+      return { sent: true, provider: "business" };
+    } catch (error) {
+      const httpStatus = Number(error?.response?.status || 0);
+      const providerPayload = error?.response?.data ?? null;
+      logWhatsapp("error", "provider_business_send_error", {
+        source,
+        phone: maskPhoneForLog(normalized),
+        httpStatus,
+        error: error?.message || "unknown_error",
+        providerPayload,
+      });
+      return {
+        sent: false,
+        provider: "business",
+        reason: "request_error",
+        httpStatus,
+        providerPayload,
+      };
+    }
   }
 
-  if (!ready || !client) return false;
+  if (!ready || !client) {
+    const status = getWhatsappStatus();
+    logWhatsapp("warn", "provider_web_not_ready", {
+      source,
+      phone: maskPhoneForLog(normalized),
+      status: {
+        ready: status.ready,
+        connectionState: status.connectionState,
+        lastError: status.lastError,
+      },
+    });
+    return {
+      sent: false,
+      provider: "web",
+      reason: "not_ready",
+      providerPayload: {
+        status: {
+          ready: status.ready,
+          connectionState: status.connectionState,
+          lastError: status.lastError || "",
+        },
+      },
+    };
+  }
 
-  await client.sendMessage(`${normalized}@c.us`, text);
-  return true;
+  try {
+    await client.sendMessage(`${normalized}@c.us`, text);
+    return { sent: true, provider: "web" };
+  } catch (error) {
+    logWhatsapp("error", "provider_web_send_error", {
+      source,
+      phone: maskPhoneForLog(normalized),
+      error: error?.message || "unknown_error",
+    });
+    return {
+      sent: false,
+      provider: "web",
+      reason: "send_error",
+      providerPayload: { message: error?.message || "unknown_error" },
+    };
+  }
+}
+
+async function sendWhatsappNotification({ phone, text, webhookUrl }) {
+  const result = await sendWhatsappNotificationDetailed({
+    phone,
+    text,
+    webhookUrl,
+    source: "generic",
+  });
+  return Boolean(result?.sent);
 }
 
 module.exports = {
@@ -611,4 +766,5 @@ module.exports = {
   restartWhatsApp,
   resetWhatsAppSession,
   sendWhatsappNotification,
+  sendWhatsappNotificationDetailed,
 };

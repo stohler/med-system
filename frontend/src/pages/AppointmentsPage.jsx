@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import isoWeek from "dayjs/plugin/isoWeek";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { useAuth } from "../state";
 import { useToast } from "../toast";
 import { getLocationColor } from "../utils/locationColors";
 
@@ -18,9 +19,34 @@ const DAYS = [
   { key: 7, label: "Dom" },
 ];
 
-const TIME_SLOTS = Array.from({ length: 24 }).map((_, index) =>
-  String(index).padStart(2, "0") + ":00"
-);
+function buildHalfHourSlotLabels(startHour, endHour) {
+  const slots = [];
+  const from = Math.max(0, Math.min(23, Number(startHour) || 0));
+  const to = Math.max(0, Math.min(23, Number(endHour) || 0));
+  if (from > to) return slots;
+  for (let minutes = from * 60; minutes <= to * 60; minutes += 30) {
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    slots.push(`${String(h).padStart(2, "0")}:${m === 0 ? "00" : "30"}`);
+  }
+  return slots;
+}
+
+function timeLabelFromMinutes(slotMin) {
+  const h = Math.floor(slotMin / 60);
+  const mm = slotMin % 60;
+  return `${String(h).padStart(2, "0")}:${mm === 0 ? "00" : "30"}`;
+}
+
+function halfHourSlotKeyFromDate(isoOrDate) {
+  const start = dayjs(isoOrDate);
+  if (!start.isValid()) return null;
+  const dayKey = start.isoWeekday();
+  const totalMin = start.hour() * 60 + start.minute();
+  const slotMin = Math.floor(totalMin / 30) * 30;
+  const hourKey = timeLabelFromMinutes(slotMin);
+  return `${dayKey}-${hourKey}`;
+}
 
 const emptyForm = {
   patientId: "",
@@ -120,6 +146,7 @@ function escapeHtml(value) {
 
 export function AppointmentsPage() {
   const toast = useToast();
+  const { user } = useAuth();
   const [patients, setPatients] = useState([]);
   const [locations, setLocations] = useState([]);
   const [procedures, setProcedures] = useState([]);
@@ -137,6 +164,12 @@ export function AppointmentsPage() {
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [messagePreview, setMessagePreview] = useState(emptyMessagePreview);
   const [savingAppointment, setSavingAppointment] = useState(false);
+  const [clinicPrefs, setClinicPrefs] = useState({
+    agendaGridStartHour: 7,
+    agendaGridEndHour: 19,
+  });
+  const [markingNoShow, setMarkingNoShow] = useState(false);
+  const [appointmentActionLoading, setAppointmentActionLoading] = useState("");
 
   const navigate = useNavigate();
   const locationRouter = useLocation();
@@ -184,17 +217,28 @@ export function AppointmentsPage() {
     const weekFrom = weekStart.startOf("day").toISOString();
     const weekTo = weekStart.add(6, "day").endOf("day").toISOString();
 
-    const [p, l, pr, a] = await Promise.all([
+    const [p, l, pr, a, prefsRes] = await Promise.all([
       api.get("/patients"),
       api.get("/locations"),
       api.get("/procedures"),
       api.get("/appointments", { params: { from: weekFrom, to: weekTo } }),
+      api.get("/clinic-preferences").catch(() => ({ data: {} })),
     ]);
 
     setPatients(p.data.data || []);
     setLocations(l.data.locations || []);
     setProcedures(pr.data.procedures || []);
     setAppointments(a.data.appointments || []);
+    const prefs = prefsRes?.data;
+    if (
+      typeof prefs?.agendaGridStartHour === "number" &&
+      typeof prefs?.agendaGridEndHour === "number"
+    ) {
+      setClinicPrefs({
+        agendaGridStartHour: prefs.agendaGridStartHour,
+        agendaGridEndHour: prefs.agendaGridEndHour,
+      });
+    }
   };
 
   useEffect(() => {
@@ -202,8 +246,18 @@ export function AppointmentsPage() {
   }, [weekStart.valueOf()]);
 
   useEffect(() => {
+    if (user?.role === "reception") {
+      setGoogleSync({
+        loading: false,
+        connected: false,
+        configured: false,
+        details: "Integracao Google nao disponivel para seu perfil.",
+      });
+      return undefined;
+    }
     loadGoogleSyncStatus().catch(() => null);
-  }, []);
+    return undefined;
+  }, [user?.role]);
 
   useEffect(() => {
     const selected = locationRouter.state?.selectedPatient;
@@ -249,14 +303,36 @@ export function AppointmentsPage() {
     );
   }, [procedures, form.location]);
 
+  const timeSlots = useMemo(() => {
+    const base = buildHalfHourSlotLabels(
+      clinicPrefs.agendaGridStartHour,
+      clinicPrefs.agendaGridEndHour
+    );
+    const set = new Set(base);
+    for (const appointment of appointments) {
+      const start = dayjs(appointment.startsAt);
+      if (!start.isValid()) continue;
+      const totalMin = start.hour() * 60 + start.minute();
+      const slotMin = Math.floor(totalMin / 30) * 30;
+      set.add(timeLabelFromMinutes(slotMin));
+    }
+    return Array.from(set).sort((a, b) => {
+      const [ha, ma] = a.split(":").map(Number);
+      const [hb, mb] = b.split(":").map(Number);
+      return ha * 60 + ma - (hb * 60 + mb);
+    });
+  }, [
+    clinicPrefs.agendaGridStartHour,
+    clinicPrefs.agendaGridEndHour,
+    appointments,
+  ]);
+
   const weeklyGrid = useMemo(() => {
     const map = new Map();
 
     for (const appointment of appointments) {
-      const start = dayjs(appointment.startsAt);
-      const dayKey = start.isoWeekday();
-      const hourKey = start.format("HH:00");
-      const key = `${dayKey}-${hourKey}`;
+      const key = halfHourSlotKeyFromDate(appointment.startsAt);
+      if (!key) continue;
       const list = map.get(key) || [];
       list.push(appointment);
       map.set(key, list);
@@ -330,6 +406,59 @@ export function AppointmentsPage() {
 
   const handleAppointmentClick = (appointment) => {
     setSelectedAppointment(appointment);
+  };
+
+  const handleMarkNoShow = async () => {
+    if (!selectedAppointment?._id) return;
+    const ok = window.confirm("Marcar este agendamento como falta do paciente?");
+    if (!ok) return;
+    setMarkingNoShow(true);
+    setError("");
+    try {
+      await api.put(`/appointments/${selectedAppointment._id}`, { status: "no_show" });
+      toast.success("Agendamento marcado como faltou.");
+      setSelectedAppointment(null);
+      await load();
+    } catch (err) {
+      setError(err?.response?.data?.message || "Nao foi possivel atualizar o agendamento");
+    } finally {
+      setMarkingNoShow(false);
+    }
+  };
+
+  const handleResendTemplate = async () => {
+    if (!selectedAppointment?._id) return;
+    setAppointmentActionLoading("resend-template");
+    setError("");
+    try {
+      const { data } = await api.post(`/appointments/${selectedAppointment._id}/resend-template`);
+      toast.success(data?.message || "Template reenviado com sucesso.");
+      await load();
+    } catch (err) {
+      setError(err?.response?.data?.message || "Nao foi possivel reenviar o template");
+    } finally {
+      setAppointmentActionLoading("");
+    }
+  };
+
+  const handleSendAgendaConfirmation = async () => {
+    if (!selectedAppointment?._id) return;
+    setAppointmentActionLoading("send-confirmation");
+    setError("");
+    try {
+      const { data } = await api.post(
+        `/appointments/${selectedAppointment._id}/send-confirmation`
+      );
+      toast.success(data?.message || "Confirmacao enviada com sucesso.");
+      await load();
+      setSelectedAppointment((prev) =>
+        prev ? { ...prev, status: "confirmed" } : prev
+      );
+    } catch (err) {
+      setError(err?.response?.data?.message || "Nao foi possivel enviar a confirmacao");
+    } finally {
+      setAppointmentActionLoading("");
+    }
   };
 
   const goToPatientCreate = () => {
@@ -880,7 +1009,7 @@ export function AppointmentsPage() {
             );
           })}
 
-          {TIME_SLOTS.map((slot) => (
+          {timeSlots.map((slot) => (
             <div key={`row-${slot}`} style={{ display: "contents" }}>
               <div key={`h-${slot}`} className="week-grid-hour">
                 {slot}
@@ -893,11 +1022,16 @@ export function AppointmentsPage() {
                     {items.map((item) => (
                       <article
                         key={item._id}
-                        className="week-event clickable"
+                        className={`week-event clickable${
+                          item.status === "no_show" ? " week-event-no-show" : ""
+                        }`}
                         onClick={() => handleAppointmentClick(item)}
                         title="Clique para editar ou atender"
                         style={locationCardStyle(item.location)}
                       >
+                        {item.status === "no_show" ? (
+                          <span className="week-event-badge">Faltou</span>
+                        ) : null}
                         <strong>{item.patient?.fullName}</strong>
                         <span>{item.procedureType?.name}</span>
                         <span className="location-chip" style={locationCardStyle(item.location)}>
@@ -921,6 +1055,9 @@ export function AppointmentsPage() {
               {selectedAppointment.patient?.fullName} -{" "}
               {dayjs(selectedAppointment.startsAt).format("DD/MM/YYYY HH:mm")}
             </p>
+            {selectedAppointment.status === "no_show" ? (
+              <p className="week-event-badge-inline">Paciente faltou neste horario.</p>
+            ) : null}
             <div
               className="location-chip"
               style={locationCardStyle(selectedAppointment.location)}
@@ -947,6 +1084,36 @@ export function AppointmentsPage() {
               >
                 Atender paciente
               </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={Boolean(appointmentActionLoading)}
+                onClick={() => handleResendTemplate()}
+              >
+                {appointmentActionLoading === "resend-template"
+                  ? "Reenviando..."
+                  : "Reenviar template"}
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={Boolean(appointmentActionLoading)}
+                onClick={() => handleSendAgendaConfirmation()}
+              >
+                {appointmentActionLoading === "send-confirmation"
+                  ? "Enviando..."
+                  : "Enviar confirmacao agenda"}
+              </button>
+              {["scheduled", "confirmed"].includes(selectedAppointment.status) ? (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={markingNoShow}
+                  onClick={() => handleMarkNoShow()}
+                >
+                  {markingNoShow ? "Salvando..." : "Marcar faltou"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn-ghost"

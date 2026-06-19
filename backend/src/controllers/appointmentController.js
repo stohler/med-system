@@ -1,4 +1,5 @@
 const { z } = require("zod");
+const mongoose = require("mongoose");
 const {
   Appointment,
   ClinicLocation,
@@ -7,13 +8,21 @@ const {
   MessageTemplate,
 } = require("../models");
 const { asyncHandler } = require("../utils/asyncHandler");
-const { AppError, NotFoundError } = require("../utils/errors");
+const { AppError, NotFoundError, ForbiddenError } = require("../utils/errors");
 const {
   createCalendarEvent,
-  getStoredGoogleTokensForUser,
+  getValidGoogleTokensForUser,
   updateCalendarEvent,
 } = require("../services/googleCalendarService");
-const { sendWhatsappNotification } = require("../services/whatsappService");
+const {
+  sendWhatsappNotificationDetailed,
+} = require("../services/whatsappService");
+const { formatDisplayDate, formatDisplayTime } = require("../utils/displayTime");
+const {
+  assertLocationAllowedForReception,
+  normalizedAllowedLocationIds,
+} = require("../utils/locationAccess");
+const { env } = require("../config/env");
 
 const CONSULTATION_REMINDER_KEY = "consultation_reminder_1_day_before";
 const BRL_FORMATTER = new Intl.NumberFormat("pt-BR", {
@@ -99,17 +108,6 @@ async function calculatePrice(locationId, procedureTypeId) {
   return (location.consultationPriceCents || 0) + procedurePrice;
 }
 
-function formatAppointmentDate(value) {
-  return new Date(value).toLocaleDateString("pt-BR");
-}
-
-function formatAppointmentTime(value) {
-  const date = new Date(value);
-  const hour = String(date.getHours()).padStart(2, "0");
-  const minute = String(date.getMinutes()).padStart(2, "0");
-  return `${hour}:${minute}`;
-}
-
 function buildLocationAddress(location) {
   if (!location) return "-";
   const cityUf = [location.city, location.state].filter(Boolean).join(" - ");
@@ -175,9 +173,9 @@ async function buildAppointmentMessage(payload) {
 
   const context = {
     patientName: patient.fullName || "",
-    appointmentDate: formatAppointmentDate(payload.startsAt),
-    appointmentTime: formatAppointmentTime(payload.startsAt),
-    appointmentDateTime: `${formatAppointmentDate(payload.startsAt)} - ${formatAppointmentTime(
+    appointmentDate: formatDisplayDate(payload.startsAt),
+    appointmentTime: formatDisplayTime(payload.startsAt),
+    appointmentDateTime: `${formatDisplayDate(payload.startsAt)} - ${formatDisplayTime(
       payload.startsAt
     )}`,
     locationName: location.name || "",
@@ -202,9 +200,57 @@ async function buildAppointmentMessage(payload) {
   };
 }
 
+function buildAgendaConfirmationMessage({ appointment, patient, procedure, location }) {
+  const locationName = location?.name || "a clinica";
+  const procedureName = procedure?.name || "seu procedimento";
+  const startsAt = appointment?.startsAt;
+  return [
+    "Confirmacao de agenda",
+    "",
+    `Ola ${patient?.fullName || "paciente"},`,
+    `seu agendamento de ${procedureName} em ${formatDisplayDate(startsAt)} as ${formatDisplayTime(
+      startsAt
+    )} foi confirmado.`,
+    `Local: ${locationName}.`,
+  ].join("\n");
+}
+
+function resolveWhatsappWebhookUrl(req) {
+  const explicit = String(env.whatsappWebhookUrl || "").trim();
+  if (explicit) return explicit;
+
+  const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
+  const host = req.headers["x-forwarded-host"] || req.get("host") || "";
+  if (!host) return "";
+  return `${proto}://${host}`.replace(/\/+$/, "") + "/api/integrations/whatsapp/webhook";
+}
+
+function logWhatsappSendFailure(action, appointment, phone, sendResult) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[appointments][whatsapp_send_failed]",
+    JSON.stringify({
+      action,
+      appointmentId: appointment?._id ? String(appointment._id) : "",
+      patientId: appointment?.patient?._id ? String(appointment.patient._id) : "",
+      phoneMasked: String(phone || "")
+        .replace(/\D/g, "")
+        .replace(/^(\d+)(\d{4})$/, (_m, head, tail) => `${"*".repeat(head.length)}${tail}`),
+      provider: sendResult?.provider || "",
+      reason: sendResult?.reason || "",
+      httpStatus: Number(sendResult?.httpStatus || 0),
+      workerUrl: sendResult?.workerUrl || "",
+      workerRequestPayload: sendResult?.workerRequestPayload || null,
+      workerResponsePayload: sendResult?.workerResponsePayload || null,
+      providerPayload: sendResult?.providerPayload || null,
+    })
+  );
+}
+
 const createAppointment = asyncHandler(async (req, res) => {
   const payload = appointmentSchema.parse(req.body);
   const confirmMessage = confirmMessageSchema.parse(req.body.confirmMessage);
+  assertLocationAllowedForReception(req.user, payload.location);
   if (payload.endsAt <= payload.startsAt) {
     throw new AppError("Fim deve ser maior que inicio", 400);
   }
@@ -230,7 +276,7 @@ const createAppointment = asyncHandler(async (req, res) => {
 
   // Integracao com Google Calendar e notificacoes ficam "best effort".
   try {
-    const googleTokens = getStoredGoogleTokensForUser(req.user);
+    const googleTokens = await getValidGoogleTokensForUser(req.user);
     if (!googleTokens) {
       throw new Error("google_not_connected");
     }
@@ -257,15 +303,19 @@ const createAppointment = asyncHandler(async (req, res) => {
         ProcedureType.findById(payload.procedureType),
       ]);
       if (patient?.phone && procedure?.appointmentConfirmationEnabled) {
-        const sent = await sendWhatsappNotification({
+        const sendResult = await sendWhatsappNotificationDetailed({
           phone: patient.phone,
           text: confirmMessage.text,
-        }).catch(() => false);
+          webhookUrl: resolveWhatsappWebhookUrl(req),
+          source: "appointments:create",
+        }).catch(() => ({ sent: false, provider: "unknown", reason: "unexpected_exception" }));
+        const sent = Boolean(sendResult?.sent);
         if (sent) {
           appointment.notificationSentAt = new Date();
           appointment.notificationStatus = "sent";
         } else {
           appointment.notificationStatus = "failed";
+          logWhatsappSendFailure("create", populated, patient.phone, sendResult);
         }
       } else {
         appointment.notificationStatus = "skipped";
@@ -282,6 +332,7 @@ const createAppointment = asyncHandler(async (req, res) => {
 
 const previewAppointmentMessage = asyncHandler(async (req, res) => {
   const payload = appointmentSchema.parse(req.body);
+  assertLocationAllowedForReception(req.user, payload.location);
   const preview = await buildAppointmentMessage(payload);
 
   res.json({
@@ -299,9 +350,26 @@ const listAppointments = asyncHandler(async (req, res) => {
     if (req.query.from) query.startsAt.$gte = new Date(req.query.from);
     if (req.query.to) query.startsAt.$lte = new Date(req.query.to);
   }
-  if (req.query.location) query.location = req.query.location;
   if (req.query.patient) query.patient = req.query.patient;
   if (req.query.status) query.status = req.query.status;
+
+  const allowed = normalizedAllowedLocationIds(req.user);
+  if (allowed !== null) {
+    if (req.query.location) {
+      const loc = String(req.query.location);
+      if (!allowed.includes(loc)) {
+        throw new ForbiddenError("Sem permissao para este endereco");
+      }
+      query.location = loc;
+    } else {
+      query.location =
+        allowed.length === 0
+          ? { $in: [] }
+          : { $in: allowed.map((id) => new mongoose.Types.ObjectId(id)) };
+    }
+  } else if (req.query.location) {
+    query.location = req.query.location;
+  }
 
   const appointments = await Appointment.find(query)
     .sort({ startsAt: 1 })
@@ -316,9 +384,12 @@ const updateAppointment = asyncHandler(async (req, res) => {
     throw new NotFoundError("Agendamento nao encontrado");
   }
 
+  assertLocationAllowedForReception(req.user, appointment.location);
+
   const nextStartsAt = payload.startsAt || appointment.startsAt;
   const nextEndsAt = payload.endsAt || appointment.endsAt;
   const nextLocation = payload.location || appointment.location.toString();
+  assertLocationAllowedForReception(req.user, nextLocation);
   if (nextEndsAt <= nextStartsAt) {
     throw new AppError("Fim deve ser maior que inicio", 400);
   }
@@ -346,7 +417,7 @@ const updateAppointment = asyncHandler(async (req, res) => {
   ]);
 
   try {
-    const googleTokens = getStoredGoogleTokensForUser(req.user);
+    const googleTokens = await getValidGoogleTokensForUser(req.user);
     if (googleTokens) {
       if (appointment.googleEventId) {
         await updateCalendarEvent({
@@ -378,11 +449,127 @@ const updateAppointment = asyncHandler(async (req, res) => {
   res.json({ appointment: populated });
 });
 
+const resendAppointmentTemplateMessage = asyncHandler(async (req, res) => {
+  const appointment = await Appointment.findById(req.params.id).populate([
+    "patient",
+    "location",
+    "procedureType",
+  ]);
+  if (!appointment) {
+    throw new NotFoundError("Agendamento nao encontrado");
+  }
+  assertLocationAllowedForReception(req.user, appointment.location?._id || appointment.location);
+
+  const payload = {
+    patient: appointment.patient?._id || appointment.patient,
+    location: appointment.location?._id || appointment.location,
+    procedureType: appointment.procedureType?._id || appointment.procedureType,
+    startsAt: appointment.startsAt,
+    endsAt: appointment.endsAt,
+    notes: appointment.notes || "",
+  };
+  const preview = await buildAppointmentMessage(payload);
+  if (!preview.patient?.phone) {
+    throw new AppError("Paciente sem telefone para envio de mensagem.", 400);
+  }
+  if (!preview.canSend) {
+    throw new AppError("Envio de template desativado para este procedimento.", 400);
+  }
+
+  const sendResult = await sendWhatsappNotificationDetailed({
+    phone: preview.patient.phone,
+    text: preview.message,
+    webhookUrl: resolveWhatsappWebhookUrl(req),
+    source: "appointments:resend-template",
+  }).catch(() => ({ sent: false, provider: "unknown", reason: "unexpected_exception" }));
+  const sent = Boolean(sendResult?.sent);
+
+  appointment.notificationPreviewMessage = preview.message;
+  appointment.notificationDecision = "resend_template";
+  appointment.notificationChannel = "whatsapp";
+  appointment.notificationStatus = sent ? "sent" : "failed";
+  if (sent) {
+    appointment.notificationSentAt = new Date();
+  }
+  await appointment.save();
+
+  if (!sent) {
+    logWhatsappSendFailure("resend-template", appointment, preview.patient.phone, sendResult);
+    return res.status(503).json({
+      sent: false,
+      message:
+        "Nao foi possivel reenviar o template agora. Verifique a conexao do WhatsApp.",
+    });
+  }
+
+  return res.json({
+    sent: true,
+    message: "Template de agendamento reenviado com sucesso.",
+  });
+});
+
+const sendAgendaConfirmationMessage = asyncHandler(async (req, res) => {
+  const appointment = await Appointment.findById(req.params.id).populate([
+    "patient",
+    "location",
+    "procedureType",
+  ]);
+  if (!appointment) {
+    throw new NotFoundError("Agendamento nao encontrado");
+  }
+  assertLocationAllowedForReception(req.user, appointment.location?._id || appointment.location);
+
+  if (!appointment.patient?.phone) {
+    throw new AppError("Paciente sem telefone para envio de confirmacao.", 400);
+  }
+
+  const confirmationMessage = buildAgendaConfirmationMessage({
+    appointment,
+    patient: appointment.patient,
+    procedure: appointment.procedureType,
+    location: appointment.location,
+  });
+  const sendResult = await sendWhatsappNotificationDetailed({
+    phone: appointment.patient.phone,
+    text: confirmationMessage,
+    webhookUrl: resolveWhatsappWebhookUrl(req),
+    source: "appointments:send-confirmation",
+  }).catch(() => ({ sent: false, provider: "unknown", reason: "unexpected_exception" }));
+  const sent = Boolean(sendResult?.sent);
+
+  appointment.notificationPreviewMessage = confirmationMessage;
+  appointment.notificationDecision = "agenda_confirmation";
+  appointment.notificationChannel = "whatsapp";
+  appointment.notificationStatus = sent ? "sent" : "failed";
+  if (sent) {
+    appointment.notificationSentAt = new Date();
+    appointment.status = "confirmed";
+  }
+  await appointment.save();
+
+  if (!sent) {
+    logWhatsappSendFailure("send-confirmation", appointment, appointment.patient.phone, sendResult);
+    return res.status(503).json({
+      sent: false,
+      message:
+        "Nao foi possivel enviar a confirmacao da agenda agora. Verifique a conexao do WhatsApp.",
+    });
+  }
+
+  return res.json({
+    sent: true,
+    message: "Mensagem de confirmacao enviada e agendamento confirmado.",
+    appointment,
+  });
+});
+
 const deleteAppointment = asyncHandler(async (req, res) => {
   const appointment = await Appointment.findById(req.params.id);
   if (!appointment) {
     throw new NotFoundError("Agendamento nao encontrado");
   }
+
+  assertLocationAllowedForReception(req.user, appointment.location);
 
   await appointment.deleteOne();
   res.status(204).send();
@@ -441,6 +628,8 @@ module.exports = {
   previewAppointmentMessage,
   listAppointments,
   updateAppointment,
+  resendAppointmentTemplateMessage,
+  sendAgendaConfirmationMessage,
   deleteAppointment,
   resendAppointmentTemplate,
 };

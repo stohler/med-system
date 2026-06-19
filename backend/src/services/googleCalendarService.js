@@ -1,6 +1,7 @@
 const { google } = require("googleapis");
 const { env } = require("../config/env");
 const { encryptText, decryptText } = require("../utils/crypto");
+const TOKEN_REFRESH_LEEWAY_MS = 60 * 1000;
 
 function parseDate(value) {
   if (!value) return null;
@@ -18,6 +19,19 @@ function normalizeGoogleTokens(tokens) {
     token_type: tokens.token_type || "",
     expiry_date: Number(tokens.expiry_date || 0) || 0,
   };
+}
+
+function mergeGoogleTokens(currentTokens, incomingTokens) {
+  const current = normalizeGoogleTokens(currentTokens) || {};
+  const incoming = normalizeGoogleTokens(incomingTokens) || {};
+  return normalizeGoogleTokens({
+    access_token: incoming.access_token || current.access_token || "",
+    refresh_token: incoming.refresh_token || current.refresh_token || "",
+    scope: incoming.scope || current.scope || "",
+    token_type: incoming.token_type || current.token_type || "",
+    expiry_date:
+      Number(incoming.expiry_date || 0) || Number(current.expiry_date || 0) || 0,
+  });
 }
 
 function serializeGoogleTokens(tokens) {
@@ -76,7 +90,8 @@ function getStoredGoogleTokensForUser(user) {
 
 async function saveGoogleTokensForUser(user, tokens) {
   if (!user) return null;
-  const normalized = normalizeGoogleTokens(tokens);
+  const currentTokens = getStoredGoogleTokensForUser(user);
+  const normalized = mergeGoogleTokens(currentTokens, tokens);
   if (!normalized) return null;
 
   user.googleCalendarTokensEncrypted = serializeGoogleTokens(normalized);
@@ -84,6 +99,47 @@ async function saveGoogleTokensForUser(user, tokens) {
   user.googleCalendarTokenExpiryAt = parseDate(normalized.expiry_date) || null;
   await user.save();
   return normalized;
+}
+
+function shouldRefreshGoogleAccessToken(tokens) {
+  const normalized = normalizeGoogleTokens(tokens);
+  if (!normalized) return false;
+  if (!normalized.access_token) return Boolean(normalized.refresh_token);
+  const expiryAt = parseDate(normalized.expiry_date);
+  if (!expiryAt) return false;
+  return expiryAt.getTime() <= Date.now() + TOKEN_REFRESH_LEEWAY_MS;
+}
+
+function getGoogleErrorMessage(error) {
+  const apiDescription =
+    error?.response?.data?.error_description || error?.response?.data?.error;
+  const fallback = error?.message || "";
+  return String(apiDescription || fallback || "").toLowerCase();
+}
+
+async function getValidGoogleTokensForUser(user) {
+  const stored = getStoredGoogleTokensForUser(user);
+  if (!stored) return null;
+  if (!shouldRefreshGoogleAccessToken(stored)) return stored;
+  if (!stored.refresh_token) return null;
+
+  const client = getOAuthClient();
+  if (!client) return stored;
+
+  client.setCredentials(stored);
+  try {
+    await client.getAccessToken();
+    const refreshed = mergeGoogleTokens(stored, client.credentials || {});
+    await saveGoogleTokensForUser(user, refreshed);
+    return refreshed;
+  } catch (error) {
+    const message = getGoogleErrorMessage(error);
+    if (/invalid_grant|token has been expired|token has been revoked/.test(message)) {
+      await clearGoogleTokensForUser(user);
+      return null;
+    }
+    return stored;
+  }
 }
 
 async function clearGoogleTokensForUser(user) {
@@ -194,6 +250,7 @@ module.exports = {
   getGoogleAuthUrl,
   getGoogleTokens,
   getStoredGoogleTokensForUser,
+  getValidGoogleTokensForUser,
   saveGoogleTokensForUser,
   clearGoogleTokensForUser,
   getGoogleConnectionStatusForUser,

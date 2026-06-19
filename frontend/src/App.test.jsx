@@ -12,6 +12,6 @@ describe("App", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText("Sistema Clinico")).toBeTruthy();
+    expect(screen.getByText(/Sistema clinico/i)).toBeTruthy();
   });
 });

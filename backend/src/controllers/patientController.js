@@ -1,6 +1,7 @@
 const { Patient, Consent, Encounter, WhatsAppMessage } = require("../models");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { encryptText, decryptText } = require("../utils/crypto");
+const { whatsappPhoneMatchVariants } = require("../utils/whatsappPhoneMatch");
 
 function normalizeOptionalString(value) {
   if (value === undefined || value === null) return undefined;
@@ -55,18 +56,6 @@ function normalizeWhatsappPhone(value) {
   return digits.startsWith("55") ? digits : `55${digits}`;
 }
 
-function dedupeMessagesById(messages) {
-  const map = new Map();
-  for (const item of messages || []) {
-    const key = String(item?._id || "");
-    if (!key) continue;
-    if (!map.has(key)) {
-      map.set(key, item);
-    }
-  }
-  return [...map.values()];
-}
-
 const listPatients = asyncHandler(async (req, res) => {
   const q = req.query.q?.trim();
   const page = Math.max(Number(req.query.page || 1), 1);
@@ -109,22 +98,22 @@ const getPatientById = asyncHandler(async (req, res) => {
     .limit(200);
 
   const normalizedPhone = normalizeWhatsappPhone(patient.phone || "");
-  const messagesByPatient = await WhatsAppMessage.find({ patient: patient._id })
+  const phoneVariantSet = new Set([
+    ...whatsappPhoneMatchVariants(normalizedPhone),
+    ...whatsappPhoneMatchVariants(patient.phoneNormalized || ""),
+  ]);
+  const phoneVariants = [...phoneVariantSet].filter(Boolean);
+
+  const messageOr = [{ patient: patient._id }];
+  if (phoneVariants.length > 0) {
+    messageOr.push({ phoneNormalized: { $in: phoneVariants } });
+    messageOr.push({ from: { $in: phoneVariants } });
+  }
+
+  const whatsappMessages = await WhatsAppMessage.find({ $or: messageOr })
     .sort({ receivedAt: -1 })
     .limit(200)
     .lean();
-  const messagesByPhone = normalizedPhone
-    ? await WhatsAppMessage.find({ phoneNormalized: normalizedPhone })
-        .sort({ receivedAt: -1 })
-        .limit(200)
-        .lean()
-    : [];
-  const whatsappMessages = dedupeMessagesById([
-    ...messagesByPatient,
-    ...messagesByPhone,
-  ]).sort(
-    (a, b) => new Date(b.receivedAt || b.createdAt) - new Date(a.receivedAt || a.createdAt)
-  );
 
   return res.json({
     data: {

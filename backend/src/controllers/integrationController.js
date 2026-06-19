@@ -7,6 +7,7 @@ const {
   getGoogleAuthUrl,
   getGoogleTokens,
   saveGoogleTokensForUser,
+  getValidGoogleTokensForUser,
   getGoogleConnectionStatusForUser,
   clearGoogleTokensForUser,
 } = require("../services/googleCalendarService");
@@ -18,6 +19,10 @@ const {
   resetWhatsAppSession,
   sendWhatsappNotification,
 } = require("../services/whatsappService");
+const {
+  whatsappPhoneMatchVariants,
+  buildPatientPhoneMatchQuery,
+} = require("../utils/whatsappPhoneMatch");
 
 function serviceEndpoint(pathname) {
   let base = String(env.whatsappServiceBaseUrl || "").trim();
@@ -199,20 +204,28 @@ function normalizeIncomingWhatsappPhone(phone) {
   return normalizePhoneNumber(digits);
 }
 
-function buildLoosePhoneRegex(digits) {
-  const normalized = String(digits || "").replace(/\D/g, "");
-  if (!normalized) return null;
-  const pattern = normalized.split("").join("\\D*");
-  return new RegExp(`${pattern}$`);
+function nestedIncomingMessage(body) {
+  const m = body?.message;
+  if (m && typeof m === "object" && !Array.isArray(m)) return m;
+  return null;
 }
 
 function extractIncomingText(body) {
+  const nested = nestedIncomingMessage(body);
+  if (nested) {
+    const t = nested.text ?? nested.body ?? nested.caption;
+    if (t != null && String(t).trim() !== "") return String(t);
+  }
+  const topMessage = body?.message;
   return (
     body?.text ||
-    body?.message ||
+    (typeof topMessage === "string" ? topMessage : "") ||
     body?.body ||
     body?.data?.text ||
-    body?.data?.message ||
+    (typeof body?.data?.message === "string" ? body.data.message : "") ||
+    (body?.data?.message && typeof body.data.message === "object"
+      ? String(body.data.message.text ?? body.data.message.body ?? body.data.message.caption ?? "")
+      : "") ||
     body?.data?.body ||
     ""
   );
@@ -495,6 +508,7 @@ const googleTokenExchange = asyncHandler(async (req, res) => {
 });
 
 const googleStatus = asyncHandler(async (req, res) => {
+  await getValidGoogleTokensForUser(req.user);
   return res.json(getGoogleConnectionStatusForUser(req.user));
 });
 
@@ -579,7 +593,9 @@ const whatsappQr = asyncHandler(async (req, res) => {
 });
 
 const whatsappWebhook = asyncHandler(async (req, res) => {
+  const inner = nestedIncomingMessage(req.body);
   const from =
+    (inner && (inner.from || inner.fromPnJid || inner.fromJid)) ||
     req.body?.from ||
     req.body?.phone ||
     req.body?.sender ||
@@ -589,27 +605,21 @@ const whatsappWebhook = asyncHandler(async (req, res) => {
   const normalizedFrom = normalizeIncomingWhatsappPhone(from);
   const text = String(extractIncomingText(req.body) || "").trim();
   const eventType = String(req.body?.event || req.body?.type || "incoming_message");
+  const toRaw = inner?.to || req.body?.to || req.body?.data?.to || "";
+  const toNormalized = toRaw ? normalizeIncomingWhatsappPhone(toRaw) : "";
+  let receivedAt = new Date();
+  if (req.body?.receivedAt) {
+    const parsed = new Date(req.body.receivedAt);
+    if (!Number.isNaN(parsed.getTime())) receivedAt = parsed;
+  }
 
   let linkedPatientId = null;
   if (normalizedFrom) {
-    const candidates = [normalizedFrom];
-    if (normalizedFrom.startsWith("55")) {
-      candidates.push(normalizedFrom.slice(2));
-    }
-    let patient = await Patient.findOne({
-      $or: [{ phoneNormalized: { $in: candidates } }, { phone: { $in: candidates } }],
-    }).select("_id");
-    if (!patient) {
-      const regexCandidates = candidates
-        .map((candidate) => buildLoosePhoneRegex(candidate))
-        .filter(Boolean)
-        .map((regex) => ({ phone: { $regex: regex } }));
-      if (regexCandidates.length > 0) {
-        patient = await Patient.findOne({ $or: regexCandidates }).select(
-          "_id phoneNormalized phone"
-        );
-      }
-    }
+    const variants = whatsappPhoneMatchVariants(normalizedFrom);
+    const matchQuery = buildPatientPhoneMatchQuery(variants);
+    let patient = matchQuery
+      ? await Patient.findOne(matchQuery).select("_id phoneNormalized phone")
+      : null;
     if (patient?._id && !patient.phoneNormalized && patient.phone) {
       await Patient.updateOne(
         { _id: patient._id },
@@ -622,19 +632,24 @@ const whatsappWebhook = asyncHandler(async (req, res) => {
   }
 
   if (text || normalizedFrom) {
+    const providerMessageId =
+      req.body?.messageId ||
+      (inner && inner.id) ||
+      req.body?.id ||
+      req.body?.data?.id ||
+      "";
     await WhatsAppMessage.create({
       patient: linkedPatientId,
       direction: "incoming",
       from: normalizedFrom || from,
       phoneNormalized: normalizedFrom,
+      to: toNormalized || toRaw,
       text,
-      providerMessageId: String(
-        req.body?.messageId || req.body?.id || req.body?.data?.id || ""
-      ),
+      providerMessageId: String(providerMessageId || ""),
       eventType,
       matchedBy: linkedPatientId ? "phone" : "unmatched",
       rawPayload: req.body,
-      receivedAt: new Date(),
+      receivedAt,
     });
   }
 
@@ -653,7 +668,39 @@ const whatsappWebhook = asyncHandler(async (req, res) => {
 });
 
 const whatsappTestMessage = asyncHandler(async (req, res) => {
+  const logTestMessageRequestPayload = (mode, payload, forwardedPayload = null) => {
+    // eslint-disable-next-line no-console
+    console.log(
+      "[integrations][whatsapp-test-message][request_payload]",
+      JSON.stringify({
+        mode,
+        payload: payload ?? null,
+        forwardedPayload: forwardedPayload ?? null,
+      })
+    );
+  };
+
+  const logTestMessageOutput = (level, statusCode, payload, mode) => {
+    const logger =
+      level === "error" ? console.error : level === "warn" ? console.warn : console.log;
+    // eslint-disable-next-line no-console
+    logger(
+      "[integrations][whatsapp-test-message][response_json]",
+      JSON.stringify({
+        mode,
+        statusCode: Number(statusCode || 0),
+        output: payload ?? null,
+      })
+    );
+  };
+
   if (serviceEndpoint("/test-message")) {
+    const webhookUrl = resolveWebhookUrl(req);
+    const forwardedPayload = {
+      ...(req.body || {}),
+      ...(webhookUrl ? { webhookUrl } : {}),
+    };
+    logTestMessageRequestPayload("proxy_external_service", req.body || null, forwardedPayload);
     try {
       const response = await requestWhatsappExternalService(req, {
         method: "post",
@@ -663,7 +710,7 @@ const whatsappTestMessage = asyncHandler(async (req, res) => {
       });
       const data = response?.data || {};
       if (isReadyButSendFailed(response?.status, data)) {
-        return res.status(422).json({
+        const output = {
           sent: false,
           message:
             "Servico WhatsApp conectado, mas nao conseguiu enviar a mensagem de teste. Verifique se o numero esta no formato DDI+DDD+numero (somente digitos) e se o contato possui WhatsApp ativo.",
@@ -673,17 +720,22 @@ const whatsappTestMessage = asyncHandler(async (req, res) => {
             providerMessage: data.message || "",
             providerConnectionState: data.status?.connectionState || "",
           },
-        });
+        };
+        logTestMessageOutput("warn", 422, output, "proxy_external_service");
+        return res.status(422).json(output);
       }
+      logTestMessageOutput("info", response.status, data, "proxy_external_service");
       return res.status(response.status).json(data);
     } catch (error) {
-      return res.status(503).json({
+      const output = {
         error: true,
         message:
           error?.message ||
           "Falha ao conectar com servico dedicado do WhatsApp.",
         details: null,
-      });
+      };
+      logTestMessageOutput("error", 503, output, "proxy_external_service");
+      return res.status(503).json(output);
     }
   }
 
@@ -691,28 +743,37 @@ const whatsappTestMessage = asyncHandler(async (req, res) => {
   const text =
     String(req.body.text || "").trim() ||
     "Teste de envio do sistema clinico.";
+  logTestMessageRequestPayload("local_service", req.body || null, { phone, text });
 
   if (!phone) {
-    return res.status(400).json({ sent: false, message: "Informe o numero para teste." });
+    const output = { sent: false, message: "Informe o numero para teste." };
+    logTestMessageOutput("warn", 400, output, "local_service");
+    return res.status(400).json(output);
   }
 
   try {
     const sent = await sendWhatsappNotification({ phone, text });
     if (!sent) {
-      return res.status(503).json({
+      const output = {
         sent: false,
         message:
           "WhatsApp ainda nao esta pronto para envio. Verifique status da conexao antes de testar.",
         status: getWhatsappStatus(),
-      });
+      };
+      logTestMessageOutput("warn", 503, output, "local_service");
+      return res.status(503).json(output);
     }
-    return res.json({ sent: true, message: "Mensagem de teste enviada com sucesso." });
+    const output = { sent: true, message: "Mensagem de teste enviada com sucesso." };
+    logTestMessageOutput("info", 200, output, "local_service");
+    return res.json(output);
   } catch (error) {
-    return res.status(503).json({
+    const output = {
       sent: false,
       message: error?.message || "Falha ao enviar mensagem de teste.",
       status: getWhatsappStatus(),
-    });
+    };
+    logTestMessageOutput("error", 503, output, "local_service");
+    return res.status(503).json(output);
   }
 });
 

@@ -4,13 +4,18 @@ const { signToken } = require("../services/tokenService");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { BadRequestError, UnauthorizedError } = require("../utils/errors");
 
+const PUBLIC_REGISTER_ROLES = new Set(["admin", "doctor", "assistant"]);
+
 function sanitizeUser(user) {
+  const ids = Array.isArray(user.allowedLocationIds) ? user.allowedLocationIds : [];
   return {
     id: user._id.toString(),
     name: user.name,
     email: user.email,
     role: user.role,
     crm: user.crm,
+    active: user.active !== false,
+    allowedLocationIds: ids.map((id) => String(id)),
   };
 }
 
@@ -25,13 +30,19 @@ const register = asyncHandler(async (req, res) => {
     throw new BadRequestError("Ja existe usuario com este email.");
   }
 
+  const requestedRole = role || "doctor";
+  if (!PUBLIC_REGISTER_ROLES.has(requestedRole)) {
+    throw new BadRequestError("Papel de usuario nao permitido no cadastro publico.");
+  }
+
   const passwordHash = await bcrypt.hash(password, 12);
   const user = await User.create({
     name,
     email,
     passwordHash,
-    role: role || "doctor",
+    role: requestedRole,
     crm: crm || "",
+    allowedLocationIds: [],
   });
 
   const token = signToken({ sub: user._id.toString(), role: user.role });
@@ -65,4 +76,5 @@ module.exports = {
   register,
   login,
   me,
+  sanitizeUser,
 };

@@ -1,5 +1,6 @@
 const { MessageTemplate } = require("../models");
 const { sendWhatsappNotification } = require("./whatsappService");
+const { formatDisplayDate, formatDisplayTime } = require("../utils/displayTime");
 
 const CONSULTATION_REMINDER_KEY = "consultation_reminder_1_day_before";
 
@@ -16,17 +17,6 @@ As informacoes de preparo e orientacoes sobre o exame podem ser encontradas ness
 
 A nao realizacao correta do preparo, conforme orientado, pode acarretar a nao
 realizacao do exame.`;
-
-function formatDate(value) {
-  return new Date(value).toLocaleDateString("pt-BR");
-}
-
-function formatTime(value) {
-  const date = new Date(value);
-  const hour = String(date.getHours()).padStart(2, "0");
-  const minute = String(date.getMinutes()).padStart(2, "0");
-  return `${hour}:${minute}`;
-}
 
 function buildAddressLine(location) {
   if (!location) return "-";
@@ -80,9 +70,9 @@ async function resolveTemplate(procedure) {
 async function buildAppointmentNotificationMessage({ appointment, patient, procedure, location }) {
   const context = {
     patientName: patient?.fullName || "",
-    appointmentDate: formatDate(appointment?.startsAt),
-    appointmentTime: formatTime(appointment?.startsAt),
-    appointmentDateTime: `${formatDate(appointment?.startsAt)} - ${formatTime(
+    appointmentDate: formatDisplayDate(appointment?.startsAt),
+    appointmentTime: formatDisplayTime(appointment?.startsAt),
+    appointmentDateTime: `${formatDisplayDate(appointment?.startsAt)} - ${formatDisplayTime(
       appointment?.startsAt
     )}`,
     locationName: location?.name || "",

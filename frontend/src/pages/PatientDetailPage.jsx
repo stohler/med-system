@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
+import { useAuth } from "../state";
 
 function onlyDigits(value) {
   return String(value || "").replace(/\D/g, "");
@@ -30,6 +31,9 @@ function formatPhone(value) {
 
 export function PatientDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const isReception = user?.role === "reception";
   const [patient, setPatient] = useState(null);
   const [encounters, setEncounters] = useState([]);
   const [whatsappMessages, setWhatsappMessages] = useState([]);
@@ -38,7 +42,14 @@ export function PatientDetailPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    if (user?.role === "reception") {
+      const patientRes = await api.get(`/patients/${id}`);
+      setPatient(patientRes.data.data);
+      setEncounters([]);
+      setWhatsappMessages([]);
+      return;
+    }
     const [patientRes, encountersRes] = await Promise.all([
       api.get(`/patients/${id}`),
       api.get("/encounters", { params: { patient: id } }),
@@ -46,11 +57,11 @@ export function PatientDetailPage() {
     setPatient(patientRes.data.data);
     setEncounters(encountersRes.data.encounters || []);
     setWhatsappMessages(patientRes.data.whatsappMessages || []);
-  };
+  }, [id, user?.role]);
 
   useEffect(() => {
     load().catch((err) => setError(err?.response?.data?.message || "Falha ao carregar paciente"));
-  }, [id]);
+  }, [load]);
 
   const encounterAppointmentDate = useMemo(() => {
     if (!selectedEncounter?.appointment?.startsAt) return "-";
@@ -64,6 +75,14 @@ export function PatientDetailPage() {
   const encounterProcedureName = useMemo(() => {
     return selectedEncounter?.appointment?.procedureType?.name || "-";
   }, [selectedEncounter]);
+
+  const incomingWhatsappMessages = useMemo(
+    () =>
+      (whatsappMessages || []).filter(
+        (m) => m.direction === "incoming" || !m.direction
+      ),
+    [whatsappMessages]
+  );
 
   const openEncounterDetails = async (encounterId) => {
     setError("");
@@ -101,12 +120,26 @@ export function PatientDetailPage() {
   };
 
   if (!patient) {
-    return <section className="stack">{error ? <p className="error">{error}</p> : <p>Carregando...</p>}</section>;
+    return (
+      <section className="stack">
+        <div className="page-title-row">
+          <button type="button" className="btn-ghost" onClick={() => navigate("/patients")}>
+            Voltar para lista
+          </button>
+        </div>
+        {error ? <p className="error">{error}</p> : <p>Carregando...</p>}
+      </section>
+    );
   }
 
   return (
     <section className="stack">
-      <h2>Detalhes do paciente</h2>
+      <div className="page-title-row">
+        <button type="button" className="btn-ghost" onClick={() => navigate("/patients")}>
+          Voltar para lista
+        </button>
+        <h2>Detalhes do paciente</h2>
+      </div>
 
       {error ? <p className="error">{error}</p> : null}
       {message ? <p className="success">{message}</p> : null}
@@ -158,6 +191,40 @@ export function PatientDetailPage() {
         </label>
         <button type="submit">Salvar alteracoes</button>
       </form>
+
+      {!isReception ? (
+        <>
+          <div className="card">
+            <h3>WhatsApp — mensagens do paciente</h3>
+        <p className="muted">
+          Historico de mensagens recebidas pelo numero cadastrado (com ou sem DDI 55).
+        </p>
+        {incomingWhatsappMessages.length > 0 ? (
+          <div className="whatsapp-message-list">
+            {incomingWhatsappMessages.map((msg) => (
+              <article
+                key={msg._id}
+                className={`whatsapp-message-item ${
+                  msg.matchedBy === "unmatched" ? "unmatched" : ""
+                }`}
+              >
+                <header className="whatsapp-message-meta">
+                  <strong>
+                    {dayjs(msg.receivedAt || msg.createdAt).format("DD/MM/YYYY HH:mm")}
+                  </strong>
+                  <span className="muted">
+                    De: {msg.from || msg.phoneNormalized || "-"}
+                    {msg.matchedBy === "unmatched" ? " (telefone nao vinculado ao cadastro na recepcao)" : ""}
+                  </span>
+                </header>
+                <p className="whatsapp-message-text">{msg.text || "-"}</p>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">Nenhuma mensagem recebida deste paciente via WhatsApp.</p>
+        )}
+      </div>
 
       <div className="card">
         <h3>Atendimentos realizados</h3>
@@ -276,9 +343,9 @@ export function PatientDetailPage() {
 
             <div className="card-mini">
               <strong>Mensagens WhatsApp recebidas</strong>
-              {whatsappMessages.length > 0 ? (
+              {incomingWhatsappMessages.length > 0 ? (
                 <div className="whatsapp-message-list">
-                  {whatsappMessages.slice(0, 20).map((msg) => (
+                  {incomingWhatsappMessages.slice(0, 20).map((msg) => (
                     <article
                       key={msg._id}
                       className={`whatsapp-message-item ${
@@ -298,7 +365,7 @@ export function PatientDetailPage() {
                   ))}
                 </div>
               ) : (
-                <p className="muted">Nenhuma resposta de WhatsApp associada.</p>
+                <p className="muted">Nenhuma mensagem de WhatsApp associada a este paciente.</p>
               )}
             </div>
 
@@ -389,6 +456,8 @@ export function PatientDetailPage() {
             <p>Carregando detalhes do atendimento...</p>
           </div>
         </div>
+      ) : null}
+        </>
       ) : null}
     </section>
   );
