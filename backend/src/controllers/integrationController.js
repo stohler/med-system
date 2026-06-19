@@ -258,7 +258,6 @@ async function requestWhatsappExternalService(
       "Content-Type": "application/json",
       ...(token
         ? {
-            "x-worker-token": token,
             "x-service-token": token,
             Authorization: `Bearer ${token}`,
           }

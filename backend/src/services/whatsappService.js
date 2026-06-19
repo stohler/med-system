@@ -573,7 +573,6 @@ async function sendViaWhatsappService({ phone, text }) {
       "Content-Type": "application/json",
       ...(token
         ? {
-            "x-worker-token": token,
             "x-service-token": token,
             Authorization: `Bearer ${token}`,
           }

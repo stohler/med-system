@@ -32,12 +32,8 @@ const env = {
   whatsappPhoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || "",
   whatsappServiceBaseUrl:
     process.env.WHATSAPP_SERVICE_BASE_URL ||
-    process.env.WHATSAPP_WORKER_URL ||
     "https://api-sandbox.moneri.com.br/v1/whatsapp-service",
-  whatsappServiceToken:
-    process.env.WHATSAPP_SERVICE_TOKEN ||
-    process.env.WHATSAPP_WORKER_TOKEN ||
-    "",
+  whatsappServiceToken: process.env.WHATSAPP_SERVICE_TOKEN || "",
   publicApiUrl: process.env.PUBLIC_API_URL || "",
   whatsappWebhookUrl: process.env.WHATSAPP_WEBHOOK_URL || "",
 };
