@@ -538,6 +538,11 @@ function normalizeWhatsappPhone(phone) {
   return `55${digitsOnly}`;
 }
 
+function formatWhatsappServicePhone(phone) {
+  const normalized = normalizeWhatsappPhone(phone);
+  return normalized ? `+${normalized}` : "";
+}
+
 function normalizeWhatsappServiceBaseUrl() {
   let base = String(env.whatsappServiceBaseUrl || "").trim();
   if (!base) return "";
@@ -580,9 +585,10 @@ async function sendViaWhatsappService({ phone, text, webhookUrl }) {
 
   const token = String(env.whatsappServiceToken || "").trim();
   const resolvedWebhookUrl = resolveWhatsappWebhookUrl(webhookUrl);
-  const workerUrl = `${base}/test-message`;
+  const workerUrl = `${base}/send-text`;
+  const servicePhone = formatWhatsappServicePhone(phone);
   const payload = {
-    phone,
+    phone: servicePhone,
     text,
     ...(resolvedWebhookUrl ? { webhookUrl: resolvedWebhookUrl } : {}),
   };
@@ -651,10 +657,11 @@ async function sendWhatsappNotificationDetailed({ phone, text, webhookUrl, sourc
       return result;
     } catch (error) {
       const httpStatus = Number(error?.response?.status || 0);
-      const workerUrl = `${normalizeWhatsappServiceBaseUrl()}/test-message`;
+      const workerUrl = `${normalizeWhatsappServiceBaseUrl()}/send-text`;
       const resolvedWebhookUrl = resolveWhatsappWebhookUrl(webhookUrl);
+      const servicePhone = formatWhatsappServicePhone(normalized);
       const workerRequestPayload = {
-        phone: normalized,
+        phone: servicePhone,
         text,
         ...(resolvedWebhookUrl ? { webhookUrl: resolvedWebhookUrl } : {}),
       };
@@ -767,4 +774,8 @@ module.exports = {
   resetWhatsAppSession,
   sendWhatsappNotification,
   sendWhatsappNotificationDetailed,
+  _private: {
+    normalizeWhatsappPhone,
+    formatWhatsappServicePhone,
+  },
 };

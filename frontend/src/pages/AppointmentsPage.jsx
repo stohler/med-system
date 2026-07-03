@@ -569,7 +569,7 @@ export function AppointmentsPage() {
     }
 
     try {
-      await api.post("/appointments", {
+      const { data } = await api.post("/appointments", {
         ...messagePreview.payload,
         confirmMessage: {
           action,
@@ -581,7 +581,11 @@ export function AppointmentsPage() {
       setForm(emptyForm);
       await load();
       if (action === "send") {
-        toast.success("Agendamento salvo e envio de mensagem acionado.");
+        if (data?.whatsapp?.sent) {
+          toast.success("Agendamento salvo e mensagem enviada.");
+        } else {
+          toast.error("Agendamento salvo, mas a mensagem do WhatsApp falhou.");
+        }
       } else if (action === "copy") {
         toast.success("Agendamento salvo sem envio automatico.");
       } else {
