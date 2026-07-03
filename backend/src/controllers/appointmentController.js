@@ -273,6 +273,7 @@ const createAppointment = asyncHandler(async (req, res) => {
     "location",
     "procedureType",
   ]);
+  let whatsappSendResult = null;
 
   // Integracao com Google Calendar e notificacoes ficam "best effort".
   try {
@@ -309,6 +310,7 @@ const createAppointment = asyncHandler(async (req, res) => {
           webhookUrl: resolveWhatsappWebhookUrl(req),
           source: "appointments:create",
         }).catch(() => ({ sent: false, provider: "unknown", reason: "unexpected_exception" }));
+        whatsappSendResult = sendResult;
         const sent = Boolean(sendResult?.sent);
         if (sent) {
           appointment.notificationSentAt = new Date();
@@ -327,7 +329,26 @@ const createAppointment = asyncHandler(async (req, res) => {
     }
   }
 
-  res.status(201).json({ appointment: populated });
+  const responseAppointment =
+    (await Appointment.findById(appointment._id).populate([
+      "patient",
+      "location",
+      "procedureType",
+    ])) || populated;
+
+  res.status(201).json({
+    appointment: responseAppointment,
+    whatsapp:
+      confirmMessage?.action === "send"
+        ? {
+            sent: Boolean(whatsappSendResult?.sent),
+            status: appointment.notificationStatus,
+            provider: whatsappSendResult?.provider || "",
+            reason: whatsappSendResult?.reason || "",
+            httpStatus: Number(whatsappSendResult?.httpStatus || 0),
+          }
+        : null,
+  });
 });
 
 const previewAppointmentMessage = asyncHandler(async (req, res) => {
