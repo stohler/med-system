@@ -631,7 +631,7 @@ async function sendViaWhatsappService({ phone, text, webhookUrl, source }) {
   logAppointmentWhatsappRequestPayload({
     source,
     payload: {
-      phone,
+      phone: servicePhone,
       text,
     },
     forwardedPayload: payload,
