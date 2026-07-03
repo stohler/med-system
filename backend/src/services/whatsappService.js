@@ -585,7 +585,7 @@ async function sendViaWhatsappService({ phone, text, webhookUrl }) {
 
   const token = String(env.whatsappServiceToken || "").trim();
   const resolvedWebhookUrl = resolveWhatsappWebhookUrl(webhookUrl);
-  const workerUrl = `${base}/send-text`;
+  const workerUrl = `${base}/test-message`;
   const servicePhone = formatWhatsappServicePhone(phone);
   const payload = {
     phone: servicePhone,
@@ -657,7 +657,7 @@ async function sendWhatsappNotificationDetailed({ phone, text, webhookUrl, sourc
       return result;
     } catch (error) {
       const httpStatus = Number(error?.response?.status || 0);
-      const workerUrl = `${normalizeWhatsappServiceBaseUrl()}/send-text`;
+      const workerUrl = `${normalizeWhatsappServiceBaseUrl()}/test-message`;
       const resolvedWebhookUrl = resolveWhatsappWebhookUrl(webhookUrl);
       const servicePhone = formatWhatsappServicePhone(normalized);
       const workerRequestPayload = {
