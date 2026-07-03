@@ -195,6 +195,11 @@ function normalizePhoneNumber(phone) {
   return digits.startsWith("55") ? digits : `55${digits}`;
 }
 
+function formatWhatsappServicePhone(phone) {
+  const normalized = normalizePhoneNumber(phone);
+  return normalized ? `+${normalized}` : "";
+}
+
 function normalizeIncomingWhatsappPhone(phone) {
   const raw = String(phone || "").trim();
   if (!raw) return "";
@@ -251,13 +256,20 @@ async function requestWhatsappExternalService(
 
   const token = String(env.whatsappServiceToken || "").trim();
   const webhookUrl = includeWebhook ? resolveWebhookUrl(req) : "";
+  const bodyWithServicePhone =
+    body && typeof body === "object" && Object.prototype.hasOwnProperty.call(body, "phone")
+      ? {
+          ...body,
+          phone: formatWhatsappServicePhone(body.phone) || body.phone,
+        }
+      : body;
   const payloadWithWebhook =
     method.toLowerCase() === "post" || method.toLowerCase() === "get"
       ? {
-          ...(body || {}),
+          ...(bodyWithServicePhone || {}),
           ...(webhookUrl ? { webhookUrl } : {}),
         }
-      : body;
+      : bodyWithServicePhone;
   const lowerMethod = String(method || "get").toLowerCase();
 
   return axios({
@@ -696,8 +708,10 @@ const whatsappTestMessage = asyncHandler(async (req, res) => {
 
   if (serviceEndpoint("/test-message")) {
     const webhookUrl = resolveWebhookUrl(req);
+    const servicePhone = formatWhatsappServicePhone(req.body?.phone);
     const forwardedPayload = {
       ...(req.body || {}),
+      ...(servicePhone ? { phone: servicePhone } : {}),
       ...(webhookUrl ? { webhookUrl } : {}),
     };
     logTestMessageRequestPayload("proxy_external_service", req.body || null, forwardedPayload);
@@ -713,10 +727,10 @@ const whatsappTestMessage = asyncHandler(async (req, res) => {
         const output = {
           sent: false,
           message:
-            "Servico WhatsApp conectado, mas nao conseguiu enviar a mensagem de teste. Verifique se o numero esta no formato DDI+DDD+numero (somente digitos) e se o contato possui WhatsApp ativo.",
+            "Servico WhatsApp conectado, mas nao conseguiu enviar a mensagem de teste. Verifique se o numero esta no formato +DDI+DDD+numero e se o contato possui WhatsApp ativo.",
           status: data.status || null,
           details: {
-            normalizedPhone: normalizePhoneNumber(req.body?.phone),
+            normalizedPhone: formatWhatsappServicePhone(req.body?.phone),
             providerMessage: data.message || "",
             providerConnectionState: data.status?.connectionState || "",
           },
