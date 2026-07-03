@@ -579,7 +579,43 @@ function resolveWhatsappWebhookUrl(webhookUrl) {
   return `${publicApi.replace(/\/+$/, "")}/api/integrations/whatsapp/webhook`;
 }
 
-async function sendViaWhatsappService({ phone, text, webhookUrl }) {
+function shouldLogAppointmentWhatsappPayload(source) {
+  return String(source || "").startsWith("appointments:");
+}
+
+function logAppointmentWhatsappRequestPayload({ source, payload, forwardedPayload }) {
+  if (!shouldLogAppointmentWhatsappPayload(source)) return;
+  // eslint-disable-next-line no-console
+  console.log(
+    "[appointments][whatsapp-send][request_payload]",
+    JSON.stringify({
+      mode: "proxy_external_service",
+      source,
+      payload: payload ?? null,
+      forwardedPayload: forwardedPayload ?? null,
+    })
+  );
+}
+
+function logAppointmentWhatsappResponse({ source, statusCode, payload }) {
+  if (!shouldLogAppointmentWhatsappPayload(source)) return;
+  const logger =
+    Number(statusCode || 0) >= 400 || payload?.sent === false
+      ? console.warn
+      : console.log;
+  // eslint-disable-next-line no-console
+  logger(
+    "[appointments][whatsapp-send][response_json]",
+    JSON.stringify({
+      mode: "proxy_external_service",
+      source,
+      statusCode: Number(statusCode || 0),
+      output: payload ?? null,
+    })
+  );
+}
+
+async function sendViaWhatsappService({ phone, text, webhookUrl, source, originalPhone }) {
   const base = normalizeWhatsappServiceBaseUrl();
   if (!base) return false;
 
@@ -592,6 +628,14 @@ async function sendViaWhatsappService({ phone, text, webhookUrl }) {
     text,
     ...(resolvedWebhookUrl ? { webhookUrl: resolvedWebhookUrl } : {}),
   };
+  logAppointmentWhatsappRequestPayload({
+    source,
+    payload: {
+      phone: originalPhone || phone,
+      text,
+    },
+    forwardedPayload: payload,
+  });
   const response = await axios({
     method: "post",
     url: workerUrl,
@@ -607,6 +651,11 @@ async function sendViaWhatsappService({ phone, text, webhookUrl }) {
         : {}),
     },
     validateStatus: () => true,
+  });
+  logAppointmentWhatsappResponse({
+    source,
+    statusCode: response?.status,
+    payload: response?.data ?? null,
   });
 
   return {
@@ -641,7 +690,13 @@ async function sendWhatsappNotificationDetailed({ phone, text, webhookUrl, sourc
 
   if (normalizeWhatsappServiceBaseUrl()) {
     try {
-      const result = await sendViaWhatsappService({ phone: normalized, text, webhookUrl });
+      const result = await sendViaWhatsappService({
+        phone: normalized,
+        text,
+        webhookUrl,
+        source,
+        originalPhone: phone,
+      });
       if (!result.sent) {
         logWhatsapp("warn", "provider_service_send_failed", {
           source,
@@ -666,6 +721,11 @@ async function sendWhatsappNotificationDetailed({ phone, text, webhookUrl, sourc
         ...(resolvedWebhookUrl ? { webhookUrl: resolvedWebhookUrl } : {}),
       };
       const providerPayload = error?.response?.data ?? null;
+      logAppointmentWhatsappResponse({
+        source,
+        statusCode: httpStatus,
+        payload: providerPayload || { message: error?.message || "unknown_error" },
+      });
       logWhatsapp("error", "provider_service_send_error", {
         source,
         phone: maskPhoneForLog(normalized),
