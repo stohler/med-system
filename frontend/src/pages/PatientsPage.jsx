@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import dayjs from "dayjs";
 import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
+import { useDebouncedValue } from "../utils/useDebouncedValue";
 
 const PAGE_SIZE = 10;
 
@@ -40,6 +41,8 @@ const initialForm = {
 
 export function PatientsPage() {
   const [patients, setPatients] = useState([]);
+  const [totalPatients, setTotalPatients] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -47,6 +50,7 @@ export function PatientsPage() {
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -66,30 +70,25 @@ export function PatientsPage() {
   }, [location.state]);
 
   const load = async () => {
-    const { data } = await api.get("/patients");
+    const { data } = await api.get("/patients", {
+      params: {
+        page,
+        pageSize: PAGE_SIZE,
+        q: debouncedSearch.trim() || undefined,
+      },
+    });
     setPatients(data.data || []);
+    setTotalPatients(Number(data.total) || 0);
   };
 
   useEffect(() => {
-    load().catch(() => setError("Falha ao carregar pacientes"));
-  }, []);
+    setLoading(true);
+    load()
+      .catch(() => setError("Falha ao carregar pacientes"))
+      .finally(() => setLoading(false));
+  }, [page, debouncedSearch]);
 
-  const filteredPatients = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return patients;
-    return patients.filter((patient) =>
-      `${patient.fullName} ${patient.documentNumber || ""} ${patient.phone || ""} ${patient.email || ""}`
-        .toLowerCase()
-        .includes(q)
-    );
-  }, [patients, search]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredPatients.length / PAGE_SIZE));
-  const pagedPatients = filteredPatients.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [totalPages, page]);
+  const totalPages = Math.max(1, Math.ceil(totalPatients / PAGE_SIZE));
 
   const resetForm = () => {
     setEditingId("");
@@ -265,7 +264,16 @@ export function PatientsPage() {
             </tr>
           </thead>
           <tbody>
-            {pagedPatients.map((patient) => (
+            {loading ? (
+              <tr>
+                <td colSpan={6}>Carregando pacientes...</td>
+              </tr>
+            ) : patients.length === 0 ? (
+              <tr>
+                <td colSpan={6}>Nenhum paciente encontrado.</td>
+              </tr>
+            ) : (
+              patients.map((patient) => (
               <tr key={patient._id}>
                 <td>
                   <button
@@ -286,7 +294,8 @@ export function PatientsPage() {
                   </button>
                 </td>
               </tr>
-            ))}
+            ))
+            )}
           </tbody>
         </table>
 
@@ -295,7 +304,7 @@ export function PatientsPage() {
             Anterior
           </button>
           <span>
-            Pagina {page} de {totalPages}
+            Pagina {page} de {totalPages} ({totalPatients} pacientes)
           </span>
           <button type="button" className="btn-ghost" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
             Proxima

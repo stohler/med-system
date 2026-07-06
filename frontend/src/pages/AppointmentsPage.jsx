@@ -6,6 +6,7 @@ import { api } from "../api";
 import { useAuth } from "../state";
 import { useToast } from "../toast";
 import { getLocationColor } from "../utils/locationColors";
+import { useDebouncedValue } from "../utils/useDebouncedValue";
 
 dayjs.extend(isoWeek);
 
@@ -147,7 +148,8 @@ function escapeHtml(value) {
 export function AppointmentsPage() {
   const toast = useToast();
   const { user } = useAuth();
-  const [patients, setPatients] = useState([]);
+  const [patientSuggestions, setPatientSuggestions] = useState([]);
+  const [patientSearchLoading, setPatientSearchLoading] = useState(false);
   const [locations, setLocations] = useState([]);
   const [procedures, setProcedures] = useState([]);
   const [appointments, setAppointments] = useState([]);
@@ -217,15 +219,12 @@ export function AppointmentsPage() {
     const weekFrom = weekStart.startOf("day").toISOString();
     const weekTo = weekStart.add(6, "day").endOf("day").toISOString();
 
-    const [p, l, pr, a, prefsRes] = await Promise.all([
-      api.get("/patients"),
+    const [l, pr, a, prefsRes] = await Promise.all([
       api.get("/locations"),
       api.get("/procedures"),
       api.get("/appointments", { params: { from: weekFrom, to: weekTo } }),
       api.get("/clinic-preferences").catch(() => ({ data: {} })),
     ]);
-
-    setPatients(p.data.data || []);
     setLocations(l.data.locations || []);
     setProcedures(pr.data.procedures || []);
     setAppointments(a.data.appointments || []);
@@ -288,13 +287,45 @@ export function AppointmentsPage() {
     navigate(locationRouter.pathname, { replace: true, state: null });
   }, [locationRouter.state]);
 
-  const filteredPatients = useMemo(() => {
-    const q = form.patientSearch.trim().toLowerCase();
-    if (!q) return [];
-    return patients
-      .filter((p) => patientLabel(p).toLowerCase().includes(q))
-      .slice(0, 8);
-  }, [patients, form.patientSearch]);
+  const debouncedPatientQuery = useDebouncedValue(form.patientSearch, 300);
+
+  useEffect(() => {
+    if (form.patientId) {
+      setPatientSuggestions([]);
+      setPatientSearchLoading(false);
+      return undefined;
+    }
+
+    const query = debouncedPatientQuery.trim();
+    if (!query) {
+      setPatientSuggestions([]);
+      setPatientSearchLoading(false);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    setPatientSearchLoading(true);
+
+    api
+      .get("/patients", {
+        params: { q: query, pageSize: 15 },
+        signal: controller.signal,
+      })
+      .then(({ data }) => {
+        setPatientSuggestions(data.data || []);
+      })
+      .catch((err) => {
+        if (err?.code === "ERR_CANCELED" || err?.name === "CanceledError") return;
+        setPatientSuggestions([]);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setPatientSearchLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [debouncedPatientQuery, form.patientId]);
 
   const proceduresForSelectedLocation = useMemo(() => {
     if (!form.location) return procedures;
@@ -498,6 +529,7 @@ export function AppointmentsPage() {
       patientId: patient._id,
       patientSearch: patientLabel(patient),
     }));
+    setPatientSuggestions([]);
   };
 
   const submit = async (event) => {
@@ -801,9 +833,12 @@ export function AppointmentsPage() {
               placeholder="Digite nome do paciente"
               required
             />
-            {filteredPatients.length > 0 && !form.patientId ? (
+            {patientSearchLoading && !form.patientId && form.patientSearch.trim() ? (
+              <p className="muted autocomplete-status">Buscando pacientes...</p>
+            ) : null}
+            {patientSuggestions.length > 0 && !form.patientId ? (
               <div className="autocomplete-list">
-                {filteredPatients.map((patient) => (
+                {patientSuggestions.map((patient) => (
                   <button
                     type="button"
                     key={patient._id}
