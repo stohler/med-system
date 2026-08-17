@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useToast } from "../toast";
 import { getLocationColor } from "../utils/locationColors";
+import { exportEncounterPdf } from "../utils/encounterExport";
 
 const PAGE_SIZE = 10;
 
@@ -41,6 +42,7 @@ export function EncountersPage() {
   const [showExamSection, setShowExamSection] = useState(false);
   const [showSurgerySection, setShowSurgerySection] = useState(false);
   const [whatsappMessages, setWhatsappMessages] = useState([]);
+  const [exportingEncounterId, setExportingEncounterId] = useState("");
 
   const [encounterForm, setEncounterForm] = useState(encounterInitial);
   const [examForm, setExamForm] = useState({ examType: "", findings: "" });
@@ -333,6 +335,23 @@ export function EncountersPage() {
     }
   };
 
+  const exportEncounter = async (encounterId) => {
+    if (!encounterId) return;
+    setError("");
+    setExportingEncounterId(encounterId);
+    try {
+      await exportEncounterPdf(encounterId);
+      toast.success("PDF do atendimento exportado com sucesso.");
+    } catch (err) {
+      const message =
+        err?.response?.data?.message || "Falha ao exportar PDF do atendimento";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setExportingEncounterId("");
+    }
+  };
+
   const selectEncounterFromTable = (encounter) => {
     const appointment = encounter.appointment;
     const ctx = {
@@ -599,6 +618,16 @@ export function EncountersPage() {
         >
           {showSurgerySection ? "Ocultar agendar cirurgia" : "Programar cirurgia"}
         </button>
+        <button
+          type="button"
+          className="btn-ghost"
+          disabled={!activeEncounterId || Boolean(exportingEncounterId)}
+          onClick={() => exportEncounter(activeEncounterId)}
+        >
+          {activeEncounterId && exportingEncounterId === activeEncounterId
+            ? "Gerando PDF..."
+            : "Exportar atendimento em PDF"}
+        </button>
       </div>
 
       {showExamSection ? (
@@ -785,6 +814,16 @@ export function EncountersPage() {
                         }}
                       >
                         Receita
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        disabled={exportingEncounterId === item._id}
+                        onClick={() => exportEncounter(item._id)}
+                      >
+                        {exportingEncounterId === item._id
+                          ? "Gerando PDF..."
+                          : "Exportar PDF"}
                       </button>
                     </div>
                   </td>
