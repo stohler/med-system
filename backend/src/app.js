@@ -36,6 +36,7 @@ function createApp() {
         return callback(new Error("CORS origin nao permitido"));
       },
       credentials: true,
+      exposedHeaders: ["Content-Disposition"],
     })
   );
   app.use(helmet());

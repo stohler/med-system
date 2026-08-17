@@ -3,6 +3,7 @@ import dayjs from "dayjs";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../state";
+import { exportEncounterPdf } from "../utils/encounterExport";
 
 function onlyDigits(value) {
   return String(value || "").replace(/\D/g, "");
@@ -41,6 +42,7 @@ export function PatientDetailPage() {
   const [encounterDetailsLoading, setEncounterDetailsLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [exportingEncounterId, setExportingEncounterId] = useState("");
 
   const load = useCallback(async () => {
     if (user?.role === "reception") {
@@ -94,6 +96,23 @@ export function PatientDetailPage() {
       setError(err?.response?.data?.message || "Falha ao carregar detalhes do atendimento");
     } finally {
       setEncounterDetailsLoading(false);
+    }
+  };
+
+  const exportEncounter = async (encounterId) => {
+    if (!encounterId) return;
+    setError("");
+    setMessage("");
+    setExportingEncounterId(encounterId);
+    try {
+      await exportEncounterPdf(encounterId);
+      setMessage("PDF do atendimento exportado com sucesso.");
+    } catch (err) {
+      setError(
+        err?.response?.data?.message || "Falha ao exportar PDF do atendimento"
+      );
+    } finally {
+      setExportingEncounterId("");
     }
   };
 
@@ -282,6 +301,16 @@ export function PatientDetailPage() {
                     >
                       Receita
                     </button>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      disabled={exportingEncounterId === encounter._id}
+                      onClick={() => exportEncounter(encounter._id)}
+                    >
+                      {exportingEncounterId === encounter._id
+                        ? "Gerando PDF..."
+                        : "Exportar PDF"}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -295,13 +324,25 @@ export function PatientDetailPage() {
           <div className="modal-card modal-card-large">
             <div className="table-header">
               <h3>Detalhes do atendimento</h3>
-              <button
-                type="button"
-                className="btn-ghost"
-                onClick={() => setSelectedEncounter(null)}
-              >
-                Fechar
-              </button>
+              <div className="inline-actions">
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  disabled={exportingEncounterId === selectedEncounter._id}
+                  onClick={() => exportEncounter(selectedEncounter._id)}
+                >
+                  {exportingEncounterId === selectedEncounter._id
+                    ? "Gerando PDF..."
+                    : "Exportar PDF"}
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => setSelectedEncounter(null)}
+                >
+                  Fechar
+                </button>
+              </div>
             </div>
 
             <div className="clinical-header">

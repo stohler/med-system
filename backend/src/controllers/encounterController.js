@@ -12,7 +12,7 @@ const {
 } = require("../models");
 const { asyncHandler } = require("../utils/asyncHandler");
 const { AppError, NotFoundError, ForbiddenError } = require("../utils/errors");
-const { buildPrescriptionPdf } = require("../services/pdfService");
+const { buildPrescriptionPdf, buildEncounterPdf } = require("../services/pdfService");
 const { sendMail } = require("../services/emailService");
 
 const encounterSchema = z.object({
@@ -246,6 +246,64 @@ const getEncounterById = asyncHandler(async (req, res) => {
   res.json({ encounter, exams, whatsappMessages });
 });
 
+function buildEncounterPdfFileName(encounter) {
+  const patientSlug = String(encounter.patient?.fullName || "paciente")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase()
+    .slice(0, 40);
+  const datePart = new Date(encounter.createdAt || Date.now()).toISOString().slice(0, 10);
+  return `atendimento-${patientSlug || "paciente"}-${datePart}.pdf`;
+}
+
+const exportEncounterPdf = asyncHandler(async (req, res) => {
+  if (req.user?.role === "reception") {
+    throw new ForbiddenError("Sem permissao");
+  }
+
+  const encounter = await Encounter.findById(req.params.id)
+    .populate("patient")
+    .populate("clinician")
+    .populate({
+      path: "appointment",
+      populate: [
+        { path: "location" },
+        { path: "procedureType" },
+      ],
+    });
+
+  if (!encounter) {
+    throw new NotFoundError("Evolucao nao encontrada");
+  }
+
+  const [exams, prescriptions] = await Promise.all([
+    ExamResult.find({ encounter: encounter._id }).sort({ createdAt: 1 }).lean(),
+    Prescription.find({ encounter: encounter._id }).sort({ createdAt: 1 }).lean(),
+  ]);
+
+  const pdfBuffer = await buildEncounterPdf({
+    encounter,
+    patient: encounter.patient,
+    clinician: encounter.clinician,
+    appointment: encounter.appointment,
+    location: encounter.appointment?.location,
+    procedureType: encounter.appointment?.procedureType,
+    exams,
+    prescriptions,
+  });
+
+  res
+    .status(200)
+    .setHeader("Content-Type", "application/pdf")
+    .setHeader(
+      "Content-Disposition",
+      `attachment; filename="${buildEncounterPdfFileName(encounter)}"`
+    )
+    .send(pdfBuffer);
+});
+
 const addExamResult = asyncHandler(async (req, res) => {
   const payload = examSchema.parse(req.body);
   const encounter = await Encounter.findById(req.params.id);
@@ -375,6 +433,7 @@ module.exports = {
   updateEncounter,
   listEncounters,
   getEncounterById,
+  exportEncounterPdf,
   addExamResult,
   issuePrescription,
   scheduleSurgery,

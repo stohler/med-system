@@ -4,6 +4,7 @@ const {
   updateEncounter,
   listEncounters,
   getEncounterById,
+  exportEncounterPdf,
   addExamResult,
   issuePrescription,
   scheduleSurgery,
@@ -15,6 +16,7 @@ const router = Router();
 router.use(requireAuth);
 router.get("/", listEncounters);
 router.get("/:id", getEncounterById);
+router.get("/:id/pdf", exportEncounterPdf);
 router.post("/", requireRole("doctor", "admin"), createEncounter);
 router.put("/:id", requireRole("doctor", "admin"), updateEncounter);
 router.post("/:id/exams", requireRole("doctor", "admin"), addExamResult);
