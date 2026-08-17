@@ -621,10 +621,10 @@ export function EncountersPage() {
         <button
           type="button"
           className="btn-ghost"
-          disabled={!activeEncounterId || exportingEncounterId === activeEncounterId}
+          disabled={!activeEncounterId || Boolean(exportingEncounterId)}
           onClick={() => exportEncounter(activeEncounterId)}
         >
-          {exportingEncounterId === activeEncounterId
+          {activeEncounterId && exportingEncounterId === activeEncounterId
             ? "Gerando PDF..."
             : "Exportar atendimento em PDF"}
         </button>
