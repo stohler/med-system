@@ -1091,8 +1091,11 @@ export function AppointmentsPage() {
           <div className="modal-card">
             <h3>Acoes do agendamento</h3>
             <p>
-              {selectedAppointment.patient?.fullName} -{" "}
-              {dayjs(selectedAppointment.startsAt).format("DD/MM/YYYY HH:mm")}
+              {selectedAppointment.patient?.fullName}
+              {selectedAppointment.patient?.birthDate
+                ? ` - ${dayjs(selectedAppointment.patient.birthDate).format("DD/MM/YYYY")}`
+                : ""}{" "}
+              - {dayjs(selectedAppointment.startsAt).format("DD/MM/YYYY HH:mm")}
             </p>
             {selectedAppointment.status === "no_show" ? (
               <p className="week-event-badge-inline">Paciente faltou neste horario.</p>

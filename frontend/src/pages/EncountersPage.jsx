@@ -5,6 +5,7 @@ import { api } from "../api";
 import { useToast } from "../toast";
 import { getLocationColor } from "../utils/locationColors";
 import { exportEncounterPdf } from "../utils/encounterExport";
+import { calculateAge } from "../utils/patientUtils";
 
 const PAGE_SIZE = 10;
 
@@ -175,6 +176,7 @@ export function EncountersPage() {
   const locationColor = getLocationColor(
     activeAppointment?.location?._id || activeAppointment?.location
   );
+  const patientAge = calculateAge(activeAppointment?.patient?.birthDate);
 
   const totalPages = Math.max(1, Math.ceil(filteredEncounters.length / PAGE_SIZE));
   const pagedEncounters = filteredEncounters.slice(
@@ -391,6 +393,10 @@ export function EncountersPage() {
                 ? dayjs(activeAppointment.patient.birthDate).format("DD/MM/YYYY")
                 : "-"}
             </span>
+          </div>
+          <div>
+            <strong>Idade</strong>
+            <span>{patientAge != null ? `${patientAge} anos` : "-"}</span>
           </div>
           <div>
             <strong>Procedimento</strong>
