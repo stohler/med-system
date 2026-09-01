@@ -1097,6 +1097,9 @@ export function AppointmentsPage() {
                 : ""}{" "}
               - {dayjs(selectedAppointment.startsAt).format("DD/MM/YYYY HH:mm")}
             </p>
+            <p>
+              <strong>Telefone:</strong> {selectedAppointment.patient?.phone || "-"}
+            </p>
             {selectedAppointment.status === "no_show" ? (
               <p className="week-event-badge-inline">Paciente faltou neste horario.</p>
             ) : null}
