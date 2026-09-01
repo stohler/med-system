@@ -615,7 +615,7 @@ function logAppointmentWhatsappResponse({ source, statusCode, payload }) {
   );
 }
 
-async function sendViaWhatsappService({ phone, text, webhookUrl, source, originalPhone }) {
+async function sendViaWhatsappService({ phone, text, webhookUrl, source }) {
   const base = normalizeWhatsappServiceBaseUrl();
   if (!base) return false;
 
@@ -631,7 +631,7 @@ async function sendViaWhatsappService({ phone, text, webhookUrl, source, origina
   logAppointmentWhatsappRequestPayload({
     source,
     payload: {
-      phone: originalPhone || phone,
+      phone: servicePhone,
       text,
     },
     forwardedPayload: payload,
@@ -695,7 +695,6 @@ async function sendWhatsappNotificationDetailed({ phone, text, webhookUrl, sourc
         text,
         webhookUrl,
         source,
-        originalPhone: phone,
       });
       if (!result.sent) {
         logWhatsapp("warn", "provider_service_send_failed", {
