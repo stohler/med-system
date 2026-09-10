@@ -16,35 +16,34 @@ const DAYS = [
   { key: 3, label: "Qua" },
   { key: 4, label: "Qui" },
   { key: 5, label: "Sex" },
-  { key: 6, label: "Sab" },
-  { key: 7, label: "Dom" },
 ];
 
-function buildHalfHourSlotLabels(startHour, endHour) {
-  const slots = [];
-  const from = Math.max(0, Math.min(23, Number(startHour) || 0));
-  const to = Math.max(0, Math.min(23, Number(endHour) || 0));
-  if (from > to) return slots;
-  for (let minutes = from * 60; minutes <= to * 60; minutes += 30) {
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    slots.push(`${String(h).padStart(2, "0")}:${m === 0 ? "00" : "30"}`);
-  }
-  return slots;
-}
+const SLOT_MINUTES = 15;
 
 function timeLabelFromMinutes(slotMin) {
   const h = Math.floor(slotMin / 60);
   const mm = slotMin % 60;
-  return `${String(h).padStart(2, "0")}:${mm === 0 ? "00" : "30"}`;
+  return `${String(h).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
 
-function halfHourSlotKeyFromDate(isoOrDate) {
+function buildQuarterHourSlotLabels(startHour, endHour) {
+  const slots = [];
+  const from = Math.max(0, Math.min(23, Number(startHour) || 0));
+  const to = Math.max(0, Math.min(23, Number(endHour) || 0));
+  if (from > to) return slots;
+  for (let minutes = from * 60; minutes <= to * 60; minutes += SLOT_MINUTES) {
+    slots.push(timeLabelFromMinutes(minutes));
+  }
+  return slots;
+}
+
+function quarterHourSlotKeyFromDate(isoOrDate) {
   const start = dayjs(isoOrDate);
   if (!start.isValid()) return null;
   const dayKey = start.isoWeekday();
+  if (dayKey < 1 || dayKey > 5) return null;
   const totalMin = start.hour() * 60 + start.minute();
-  const slotMin = Math.floor(totalMin / 30) * 30;
+  const slotMin = Math.floor(totalMin / SLOT_MINUTES) * SLOT_MINUTES;
   const hourKey = timeLabelFromMinutes(slotMin);
   return `${dayKey}-${hourKey}`;
 }
@@ -335,7 +334,7 @@ export function AppointmentsPage() {
   }, [procedures, form.location]);
 
   const timeSlots = useMemo(() => {
-    const base = buildHalfHourSlotLabels(
+    const base = buildQuarterHourSlotLabels(
       clinicPrefs.agendaGridStartHour,
       clinicPrefs.agendaGridEndHour
     );
@@ -343,8 +342,10 @@ export function AppointmentsPage() {
     for (const appointment of appointments) {
       const start = dayjs(appointment.startsAt);
       if (!start.isValid()) continue;
+      const dayKey = start.isoWeekday();
+      if (dayKey < 1 || dayKey > 5) continue;
       const totalMin = start.hour() * 60 + start.minute();
-      const slotMin = Math.floor(totalMin / 30) * 30;
+      const slotMin = Math.floor(totalMin / SLOT_MINUTES) * SLOT_MINUTES;
       set.add(timeLabelFromMinutes(slotMin));
     }
     return Array.from(set).sort((a, b) => {
@@ -362,7 +363,7 @@ export function AppointmentsPage() {
     const map = new Map();
 
     for (const appointment of appointments) {
-      const key = halfHourSlotKeyFromDate(appointment.startsAt);
+      const key = quarterHourSlotKeyFromDate(appointment.startsAt);
       if (!key) continue;
       const list = map.get(key) || [];
       list.push(appointment);

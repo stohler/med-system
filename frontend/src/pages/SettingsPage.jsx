@@ -285,7 +285,7 @@ export function SettingsPage() {
         </div>
         <form className="form-grid" onSubmit={saveGridPreferences}>
           <p className="muted">
-            Define o intervalo de horarios exibidos na agenda (passos de 30 minutos). Valores
+            Define o intervalo de horarios exibidos na agenda (passos de 15 minutos). Valores
             padrao: 7h a 19h.
           </p>
           <label>
