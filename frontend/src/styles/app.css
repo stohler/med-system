@@ -515,9 +515,9 @@ button:disabled {
 
 .week-grid {
   width: 100%;
-  min-width: 1300px;
+  min-width: 980px;
   display: grid;
-  grid-template-columns: 92px repeat(7, minmax(160px, 1fr));
+  grid-template-columns: 92px repeat(5, minmax(160px, 1fr));
 }
 
 .week-grid-head {
