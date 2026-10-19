@@ -5,16 +5,16 @@ const {
   updateProcedure,
   updateProcedurePriceByLocation,
 } = require("../controllers/procedureController");
-const { requireAuth, requireRole } = require("../middlewares/auth");
+const { requireAuth, requireAuthOrApiKey, requireScope, requireRole } = require("../middlewares/auth");
 
 const router = Router();
 
-router.use(requireAuth);
-router.get("/", listProcedures);
-router.post("/", requireRole("admin"), createProcedure);
-router.put("/:id", requireRole("admin"), updateProcedure);
+router.get("/", requireAuthOrApiKey, requireScope("catalog:read"), listProcedures);
+router.post("/", requireAuth, requireRole("admin"), createProcedure);
+router.put("/:id", requireAuth, requireRole("admin"), updateProcedure);
 router.put(
   "/:id/location-prices/:locationId",
+  requireAuth,
   requireRole("admin"),
   updateProcedurePriceByLocation
 );

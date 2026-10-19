@@ -8,17 +8,25 @@ const {
   sendAgendaConfirmationMessage,
   deleteAppointment,
 } = require("../controllers/appointmentController");
-const { requireAuth } = require("../middlewares/auth");
+const { requireAuthOrApiKey, requireScope } = require("../middlewares/auth");
 
 const router = Router();
 
-router.use(requireAuth);
-router.get("/", listAppointments);
-router.post("/preview-message", previewAppointmentMessage);
-router.post("/", createAppointment);
-router.post("/:id/resend-template", resendAppointmentTemplateMessage);
-router.post("/:id/send-confirmation", sendAgendaConfirmationMessage);
-router.put("/:id", updateAppointment);
-router.delete("/:id", deleteAppointment);
+router.use(requireAuthOrApiKey);
+router.get("/", requireScope("appointments:read"), listAppointments);
+router.post("/preview-message", requireScope("appointments:read"), previewAppointmentMessage);
+router.post("/", requireScope("appointments:write"), createAppointment);
+router.post(
+  "/:id/resend-template",
+  requireScope("appointments:notify"),
+  resendAppointmentTemplateMessage
+);
+router.post(
+  "/:id/send-confirmation",
+  requireScope("appointments:notify"),
+  sendAgendaConfirmationMessage
+);
+router.put("/:id", requireScope("appointments:write"), updateAppointment);
+router.delete("/:id", requireScope("appointments:delete"), deleteAppointment);
 
 module.exports = router;

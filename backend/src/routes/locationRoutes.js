@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const { requireAuth, requireRole } = require("../middlewares/auth");
+const { requireAuth, requireAuthOrApiKey, requireScope, requireRole } = require("../middlewares/auth");
 const {
   listLocations,
   createLocation,
@@ -8,9 +8,8 @@ const {
 
 const router = Router();
 
-router.use(requireAuth);
-router.get("/", listLocations);
-router.post("/", requireRole("admin"), createLocation);
-router.put("/:id", requireRole("admin"), updateLocation);
+router.get("/", requireAuthOrApiKey, requireScope("catalog:read"), listLocations);
+router.post("/", requireAuth, requireRole("admin"), createLocation);
+router.put("/:id", requireAuth, requireRole("admin"), updateLocation);
 
 module.exports = router;

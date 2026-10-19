@@ -1,6 +1,7 @@
 module.exports = {
   ClinicPreferences: require("./ClinicPreferences"),
   User: require("./User"),
+  ApiKey: require("./ApiKey"),
   Patient: require("./Patient"),
   WhatsAppMessage: require("./WhatsAppMessage"),
   ClinicLocation: require("./ClinicLocation"),

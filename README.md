@@ -19,6 +19,7 @@ Sistema completo para atendimento clinico com backend Node.js + MongoDB e fronte
 - Notificacoes por WhatsApp
 - Integracao WhatsApp Business API
 - Integracao WhatsApp Web com QR Code para escanear
+- API Keys com escopos para agentes de IA gerenciarem pacientes e agendamentos sem a interface web (veja [docs/api-keys.md](docs/api-keys.md))
 
 ## Compliance HIPAA/LGPD
 

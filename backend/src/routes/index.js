@@ -10,6 +10,7 @@ const integrationRoutes = require("./integrationRoutes");
 const messageTemplateRoutes = require("./messageTemplateRoutes");
 const clinicPreferencesRoutes = require("./clinicPreferencesRoutes");
 const userRoutes = require("./userRoutes");
+const apiKeyRoutes = require("./apiKeyRoutes");
 
 const router = Router();
 
@@ -28,5 +29,6 @@ router.use("/integrations", integrationRoutes);
 router.use("/message-templates", messageTemplateRoutes);
 router.use("/clinic-preferences", clinicPreferencesRoutes);
 router.use("/users", userRoutes);
+router.use("/api-keys", apiKeyRoutes);
 
 module.exports = router;

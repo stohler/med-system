@@ -7,7 +7,7 @@ const {
   updatePatient,
   deletePatient,
 } = require("../controllers/patientController");
-const { requireAuth } = require("../middlewares/auth");
+const { requireAuthOrApiKey, requireScope } = require("../middlewares/auth");
 const { validateRequest } = require("../validators/common");
 
 const router = Router();
@@ -31,11 +31,16 @@ const patientSchema = z.object({
   consentLgpdAt: z.string().datetime().optional(),
 });
 
-router.use(requireAuth);
-router.get("/", listPatients);
-router.get("/:id", getPatientById);
-router.post("/", validateRequest(patientSchema), createPatient);
-router.put("/:id", validateRequest(patientSchema.partial()), updatePatient);
-router.delete("/:id", deletePatient);
+router.use(requireAuthOrApiKey);
+router.get("/", requireScope("patients:read"), listPatients);
+router.get("/:id", requireScope("patients:read"), getPatientById);
+router.post("/", requireScope("patients:write"), validateRequest(patientSchema), createPatient);
+router.put(
+  "/:id",
+  requireScope("patients:write"),
+  validateRequest(patientSchema.partial()),
+  updatePatient
+);
+router.delete("/:id", requireScope("patients:delete"), deletePatient);
 
 module.exports = router;

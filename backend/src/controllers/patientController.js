@@ -3,6 +3,10 @@ const { asyncHandler } = require("../utils/asyncHandler");
 const { encryptText, decryptText } = require("../utils/crypto");
 const { whatsappPhoneMatchVariants } = require("../utils/whatsappPhoneMatch");
 
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function normalizeOptionalString(value) {
   if (value === undefined || value === null) return undefined;
   const normalized = String(value).trim();
@@ -57,7 +61,7 @@ function normalizeWhatsappPhone(value) {
 }
 
 const listPatients = asyncHandler(async (req, res) => {
-  const q = req.query.q?.trim();
+  const q = typeof req.query.q === "string" ? escapeRegex(req.query.q.trim()) : "";
   const page = Math.max(Number(req.query.page || 1), 1);
   const pageSize = Math.min(Math.max(Number(req.query.pageSize || 20), 1), 100);
   const where = q
@@ -90,6 +94,15 @@ const getPatientById = asyncHandler(async (req, res) => {
   const patient = await Patient.findById(req.params.id);
   if (!patient) {
     return res.status(404).json({ message: "Paciente nao encontrado" });
+  }
+
+  if (req.apiKey) {
+    return res.json({
+      data: {
+        ...patient.toObject(),
+        notes: decryptText(patient.encryptedNotes),
+      },
+    });
   }
 
   const encounters = await Encounter.find({ patient: patient._id })
