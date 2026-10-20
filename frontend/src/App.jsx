@@ -12,6 +12,7 @@ import { ReportsPage } from "./pages/ReportsPage";
 import { IntegrationsPage } from "./pages/IntegrationsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { AccessProfilesPage } from "./pages/AccessProfilesPage";
+import { ApiKeysPage } from "./pages/ApiKeysPage";
 import { ToastProvider } from "./toast";
 
 function HomeRoutes() {
@@ -67,6 +68,14 @@ function HomeRoutes() {
                   element={
                     <RoleRoute roles={["admin"]}>
                       <AccessProfilesPage />
+                    </RoleRoute>
+                  }
+                />
+                <Route
+                  path="/api-keys"
+                  element={
+                    <RoleRoute roles={["admin"]}>
+                      <ApiKeysPage />
                     </RoleRoute>
                   }
                 />

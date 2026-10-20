@@ -1,6 +1,7 @@
 import {
   BarChart3,
   Calendar,
+  KeyRound,
   Plug,
   Settings,
   Stethoscope,
@@ -44,6 +45,12 @@ export const mainNavItems = [
     to: "/access-profiles",
     label: "Perfis de acesso",
     icon: UserCog,
+    roles: ["admin"],
+  },
+  {
+    to: "/api-keys",
+    label: "API Keys",
+    icon: KeyRound,
     roles: ["admin"],
   },
 ];
